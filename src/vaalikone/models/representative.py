@@ -10,7 +10,7 @@ from vaalikone.models.base import Base, UUIDMixin
 class Representative(UUIDMixin, Base):
     __tablename__ = "representatives"
 
-    party_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("parties.id"))
+    party_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("parties.id"), nullable=True)
     first_name: Mapped[str] = mapped_column(Text, nullable=False)
     last_name: Mapped[str] = mapped_column(Text, nullable=False)
     constituency: Mapped[str | None] = mapped_column(Text)
