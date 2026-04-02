@@ -33,3 +33,13 @@ async def test_list_sources(client):
     resp = await client.get("/api/v1/sources")
     assert resp.status_code == 200
     assert isinstance(resp.json(), list)
+
+
+async def test_stats(client):
+    resp = await client.get("/api/v1/stats")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "parties" in data
+    assert "representatives" in data
+    assert "total_data_points" in data
+    assert all(isinstance(v, int) for v in data.values())
