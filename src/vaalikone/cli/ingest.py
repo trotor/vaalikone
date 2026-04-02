@@ -7,6 +7,8 @@ from sqlalchemy.orm import sessionmaker
 
 from vaalikone.core.config import get_settings
 from vaalikone.ingest.connectors.eduskunta import EduskuntaClient
+from vaalikone.ingest.connectors.web import fetch_and_extract
+from vaalikone.models.document import Document, ContentType
 from vaalikone.models.party import Party
 from vaalikone.models.representative import Representative
 from vaalikone.models.source import Source, SourceType, SourceStatus
@@ -177,3 +179,54 @@ def representatives():
 def votes(max_pages: int | None):
     """Fetch and store votes from eduskunta API."""
     asyncio.run(_ingest_votes(max_pages))
+
+
+async def _ingest_url(url: str, party_abbr: str | None = None):
+    click.echo(f"Fetching {url}...")
+    content = await fetch_and_extract(url)
+    if not content:
+        click.echo("Failed to extract content from URL.")
+        return
+
+    click.echo(f"Extracted: {content['title']} ({len(content['text'])} chars)")
+
+    engine, async_session = await _get_session()
+    async with async_session() as session:
+        # Find party if specified
+        party = None
+        if party_abbr:
+            party = await _find_party(session, party_abbr)
+
+        # Create source
+        source = Source(
+            source_type=SourceType.WEBSITE,
+            url=url,
+            title=content["title"],
+            status=SourceStatus.INDEXED,
+            party_id=party.id if party else None,
+        )
+        session.add(source)
+        await session.flush()
+
+        # Create document
+        doc = Document(
+            source_id=source.id,
+            title=content["title"],
+            content_text=content["text"],
+            content_type=ContentType.MUU,
+            party_id=party.id if party else None,
+            language="fi",
+        )
+        session.add(doc)
+        await session.commit()
+        click.echo(f"Stored document: {content['title']}")
+
+    await engine.dispose()
+
+
+@ingest.command()
+@click.argument("url")
+@click.option("--party", default=None, help="Party abbreviation (e.g. SDP)")
+def url(url: str, party: str | None):
+    """Ingest content from a URL."""
+    asyncio.run(_ingest_url(url, party))
