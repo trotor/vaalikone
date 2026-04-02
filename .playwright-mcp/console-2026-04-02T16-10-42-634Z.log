@@ -1,0 +1,5 @@
+[     294ms] [WARNING] i18n: currently only arrays of strings are fully supported [Object, Object, Object, Object, Object, Object, Object, Object, Object] @ https://avoindata.eduskunta.fi/js/chunk-vendors.ab62f478.js:48
+[     294ms] [WARNING] i18n: currently only arrays of strings are fully supported [Object, Object, Object, Object, Object, Object, Object, Object, Object, Object, Object, Object, Object, Object] @ https://avoindata.eduskunta.fi/js/chunk-vendors.ab62f478.js:48
+[     685ms] [ERROR] Error occured when resolving response SyntaxError: Failed to execute 'json' on 'Response': Unexpected end of JSON input
+    at a (https://avoindata.eduskunta.fi/js/app.58b6a618.js:1:22271)
+    at async g.getCurrentUser (https://avoindata.eduskunta.fi/js/app.58b6a618.js:1:19674) @ https://avoindata.eduskunta.fi/js/app.58b6a618.js:0

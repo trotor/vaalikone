@@ -140,7 +140,7 @@ async def _ingest_votes(max_pages: int | None = None):
                     select(Representative).where(
                         Representative.first_name == first_name,
                         Representative.last_name == last_name,
-                    )
+                    ).limit(1)
                 )
                 rep = result.scalar_one_or_none()
                 if not rep:
