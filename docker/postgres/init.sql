@@ -1,0 +1,4 @@
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE DATABASE vaalikone_test;
+\c vaalikone_test
+CREATE EXTENSION IF NOT EXISTS vector;
