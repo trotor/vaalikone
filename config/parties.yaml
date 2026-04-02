@@ -1,0 +1,98 @@
+parties:
+  # Eduskuntapuolueet
+  - name: "Suomen Sosiaalidemokraattinen Puolue"
+    abbreviation: "SDP"
+    website: "https://www.sdp.fi"
+    ideology: "Sosialidemokratia"
+    founded: 1899
+
+  - name: "Kansallinen Kokoomus"
+    abbreviation: "KOK"
+    website: "https://www.kokoomus.fi"
+    ideology: "Konservatismi, liberalismi"
+    founded: 1918
+
+  - name: "Perussuomalaiset"
+    abbreviation: "PS"
+    website: "https://www.perussuomalaiset.fi"
+    ideology: "Kansalliskonservatismi, populismi"
+    founded: 1995
+
+  - name: "Suomen Keskusta"
+    abbreviation: "KESK"
+    website: "https://www.keskusta.fi"
+    ideology: "Keskustalaisuus, agraariliberalismi"
+    founded: 1906
+
+  - name: "Vihreä liitto"
+    abbreviation: "VIHR"
+    website: "https://www.vihreat.fi"
+    ideology: "Vihreä politiikka"
+    founded: 1987
+
+  - name: "Vasemmistoliitto"
+    abbreviation: "VAS"
+    website: "https://www.vasemmisto.fi"
+    ideology: "Demokraattinen sosialismi"
+    founded: 1990
+
+  - name: "Svenska folkpartiet i Finland"
+    abbreviation: "RKP"
+    website: "https://www.sfp.fi"
+    ideology: "Liberalismi, kielivähemmistön oikeudet"
+    founded: 1906
+
+  - name: "Kristillisdemokraatit"
+    abbreviation: "KD"
+    website: "https://www.kd.fi"
+    ideology: "Kristillisdemokratia"
+    founded: 1958
+
+  - name: "Liike Nyt"
+    abbreviation: "LIIK"
+    website: "https://www.liikenyt.fi"
+    ideology: "Liberalismi"
+    founded: 2018
+
+  # Pienpuolueet
+  - name: "Piraattipuolue"
+    abbreviation: "PIR"
+    website: "https://www.piraattipuolue.fi"
+    ideology: "Digitaalinen vapaus"
+    founded: 2008
+
+  - name: "Eläinoikeuspuolue"
+    abbreviation: "EOP"
+    website: "https://www.elainoikeuspuolue.fi"
+    ideology: "Eläinoikeudet"
+    founded: 2015
+
+  - name: "Feministinen puolue"
+    abbreviation: "FP"
+    website: "https://www.feministinenpuolue.fi"
+    ideology: "Feminismi"
+    founded: 2016
+
+  - name: "Valta kuuluu kansalle"
+    abbreviation: "VKK"
+    website: "https://www.valtakuuluukansalle.fi"
+    ideology: "Kansalliskonservatismi"
+    founded: 2021
+
+  - name: "Suomen Kommunistinen Puolue"
+    abbreviation: "SKP"
+    website: "https://www.skp.fi"
+    ideology: "Kommunismi"
+    founded: 1994
+
+  - name: "Liberaalipuolue"
+    abbreviation: "LIB"
+    website: "https://www.liberaalipuolue.fi"
+    ideology: "Klassinen liberalismi"
+    founded: 2016
+
+  - name: "Sinimusta Liike"
+    abbreviation: "SML"
+    website: "https://www.sinimustaliike.fi"
+    ideology: "Kansallismielisyys"
+    founded: 2019
