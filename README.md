@@ -7,58 +7,169 @@ Rakennettu kevaan 2027 eduskuntavaaleja varten.
 ## Ominaisuudet
 
 - **16 puoluetta** — kaikki eduskuntapuolueet + pienpuolueet
-- **103 dokumenttia** — vaaliohjelmat, varjobudjetit, politiikkaohjelmat (web + PDF)
+- **103+ dokumenttia** — vaaliohjelmat, varjobudjetit, politiikkaohjelmat (web + PDF)
 - **2 677 kansanedustajaa** — eduskunnan avoin data vuodesta 1907
-- **183 710 aanestysta** — kansanedustajien aanestyshistoria
+- **183 710+ aanestysta** — kansanedustajien aanestyshistoria
 - **Hybrid-haku** — PostgreSQL full-text + semanttinen vektorihaku (pgvector)
 - **AI-chat** — kysele politiikasta luonnollisella kielella (OpenAI / lokaali Ollama)
 - **Web UI** — selainpohjainen chat-kayttoliittyma
 - **Offline-tuki** — toimii ilman nettia lokaalien mallien kanssa
 
-## Teknologiapino
+## Jarjestelmavaatimukset
 
-| Kerros | Teknologia |
-|--------|-----------|
-| Kieli | Python 3.12+ |
-| API | FastAPI + Uvicorn |
-| CLI | Click |
-| ORM | SQLAlchemy 2.0 (async) |
-| Migraatiot | Alembic |
-| Tietokanta | PostgreSQL 16 + pgvector |
-| LLM | LiteLLM (OpenAI, Ollama) |
-| Embedding | OpenAI text-embedding-3-small / Ollama (bge-m3, mxbai-embed-large, nomic-embed-text) |
-| Scraping | trafilatura (web), PyMuPDF (PDF) |
-| Infra | Docker Compose |
+- **Python** 3.12+
+- **Docker** ja Docker Compose
+- **Levytila**: ~2 GB (tietokanta + mallit)
+- **RAM**: vahintaan 8 GB, suositus 16+ GB
+- **GPU/Apple Silicon**: valinnainen, nopeuttaa lokaaleja malleja
 
-## Pikakaynistys
+### Valinnaiset
+
+- **OpenAI API -avain**: parempi suomenkielinen laatu (embedding + LLM)
+- **Ollama**: lokaalit mallit offline-kayttoon (ilmainen)
+
+## Asennus
+
+### 1. Kloonaa ja konfiguroi
 
 ```bash
-# 1. Kloonaa ja asenna
 git clone <repo-url>
 cd vaalikone
 cp .env.example .env
-# Muokkaa .env: lisaa OPENAI_API_KEY (valinnainen)
-
-# 2. Kaynnista tietokanta
-docker compose up -d postgres redis
-
-# 3. Asenna Python-riippuvuudet
-pip install -e ".[dev]"
-
-# 4. Aja migraatiot
-alembic upgrade head
-
-# 5. Syota alkudata
-vaalikone seed parties
-vaalikone ingest representatives
-vaalikone ingest votes --max-pages 50
-
-# 6. Kaynnista web UI
-uvicorn vaalikone.api.app:app --host 0.0.0.0 --port 8003
-# Avaa http://localhost:8003
 ```
 
-## CLI-komennot
+Muokkaa `.env`-tiedostoa:
+
+```env
+# Pakollinen
+DATABASE_URL=postgresql+asyncpg://vaalikone:vaalikone@localhost:5435/vaalikone
+REDIS_URL=redis://localhost:6382/0
+
+# Valinnainen - parempi laatu
+OPENAI_API_KEY=sk-proj-...
+
+# Valinnainen - lokaalit mallit
+OLLAMA_BASE_URL=http://localhost:11434
+DEFAULT_LLM_MODEL=gpt-4o-mini          # tai ollama/deepseek-r1:14b
+DEFAULT_EMBED_MODEL=text-embedding-3-small  # tai ollama/bge-m3
+```
+
+### 2. Kaynnista tietokanta
+
+```bash
+docker compose up -d postgres redis
+```
+
+Tarkista etta palvelut ovat kay:
+
+```bash
+docker compose ps
+# postgres ja redis pitaisi olla "healthy"
+```
+
+### 3. Asenna Python-riippuvuudet
+
+```bash
+# Suositus: kaytta virtuaaliymparistoa
+python -m venv .venv
+source .venv/bin/activate
+
+# Asenna
+pip install -e ".[dev]"
+```
+
+### 4. Aja tietokantamigraatiot
+
+```bash
+alembic upgrade head
+```
+
+### 5. Syota alkudata
+
+```bash
+# Puolueet (16 kpl)
+vaalikone seed parties
+
+# Kansanedustajat eduskunnan avoimesta datasta
+vaalikone ingest representatives
+
+# Aanestyksia (50 sivua = ~5000 aanestysta, nopea)
+vaalikone ingest votes --max-pages 50
+
+# Lisaa aanestyksia (2000 sivua = ~200 000, kestaa muutaman minuutin)
+vaalikone ingest votes --max-pages 2000
+```
+
+### 6. Indeksoi puolueohjelmia
+
+```bash
+# Esimerkkeja
+vaalikone ingest url "https://www.kokoomus.fi/periaateohjelma/" --party KOK
+vaalikone ingest url "https://www.vihreat.fi/ohjelmat/periaateohjelma-2020-2028/" --party VIHR
+vaalikone ingest pdf "https://www.perussuomalaiset.fi/wp-content/uploads/2018/10/periaateohjelma.pdf" --party PS
+
+# Katso dokumentit puolueittain
+vaalikone documents
+```
+
+### 7. Generoi embeddings (vektorihaku)
+
+```bash
+# OpenAI:lla (vaatii API-avaimen, paras suomenkielinen laatu)
+vaalikone ingest embed --model text-embedding-3-small
+
+# TAI lokaalilla mallilla (ilmainen, vaatii Ollaman)
+vaalikone ingest embed --model ollama/bge-m3
+```
+
+### 8. Kaynnista palvelin
+
+```bash
+# Kehitystila
+uvicorn vaalikone.api.app:app --host 0.0.0.0 --port 8003
+
+# Tai taustalle
+nohup uvicorn vaalikone.api.app:app --host 0.0.0.0 --port 8003 > /tmp/vaalikone.log 2>&1 &
+```
+
+Avaa selaimessa: **http://localhost:8003**
+
+## Ollama-mallien asennus (valinnainen)
+
+Ollama mahdollistaa lokaalit mallit ilman nettiyhteytta ja API-kuluja.
+
+```bash
+# Asenna Ollama: https://ollama.com/download
+
+# LLM-mallit (vastausten generointi)
+ollama pull deepseek-r1:14b    # 9 GB - paras reasoning, vaatii 16+ GB RAM
+ollama pull llama3.2:3b        # 2 GB - kevyt ja nopea
+
+# Embedding-mallit (vektorihaku)
+ollama pull bge-m3             # 1.2 GB - paras monikielinen
+ollama pull mxbai-embed-large  # 669 MB - hyva vaihtoehto
+ollama pull nomic-embed-text   # 274 MB - kevyin
+
+# zembed-1 (kokeellinen, 2560d, paras laatu)
+# Lataa GGUF: https://huggingface.co/Abhiray/zembed-1-Q4_K_M-GGUF
+# ollama create zembed-1 -f models/Modelfile.zembed-1
+```
+
+### Mallisuositukset koneen mukaan
+
+| RAM | LLM | Embedding |
+|-----|-----|-----------|
+| 8 GB | llama3.2:3b | nomic-embed-text |
+| 16 GB | deepseek-r1:14b | bge-m3 |
+| 24+ GB | deepseek-r1:14b | zembed-1 / bge-m3 |
+
+## Kaytto
+
+### Web UI
+
+Kaynnista palvelin ja avaa http://localhost:8003. Chat-kayttoliittyma tunnistaa automaattisesti kaytettavissa olevat mallit (OpenAI/Ollama) ja toimii myos offline.
+
+### CLI
 
 ```bash
 # Datan syotto
@@ -82,7 +193,7 @@ vaalikone sources list                          # Lahteet
 vaalikone sources stats                         # Lahdetilastot
 ```
 
-## REST API
+### REST API
 
 ```
 GET  /health                    Terveystarkistus
@@ -98,37 +209,69 @@ POST /api/v1/chat               AI-chat (JSON body)
 GET  /api/v1/connectivity       Palveluiden tila (OpenAI, Ollama, internet)
 ```
 
-## Docker Compose -portit
+#### Chat API esimerkki
 
-| Palvelu | Portti |
-|---------|--------|
-| FastAPI | 8003 |
-| PostgreSQL | 5435 |
-| Redis | 6382 |
-| Keycloak | 8083 (profiili: auth) |
+```bash
+curl -X POST http://localhost:8003/api/v1/chat \
+  -H "Content-Type: application/json" \
+  -d '{"question": "Mita puolueet sanovat metsakeskuksesta?", "model": "gpt-4o-mini"}'
+```
+
+## Docker Compose
+
+### Portit
+
+| Palvelu | Portti | Huom |
+|---------|--------|------|
+| FastAPI | 8003 | Web UI + API |
+| PostgreSQL | 5435 | +pgvector |
+| Redis | 6382 | Celery broker |
+| Keycloak | 8083 | Profiili: auth |
+
+Portit on siirretty +3 oletuksesta, jotta ne eivat mene paallekkain muiden palveluiden kanssa.
+
+### Komennot
+
+```bash
+# Peruspalvelut
+docker compose up -d postgres redis
+
+# Kaikki (ml. API Docker-konttina)
+docker compose up -d
+
+# Keycloak-autentikaatio (kehitysvaiheessa)
+docker compose --profile auth up -d
+
+# Sammuta
+docker compose down
+
+# Poista data ja aloita alusta
+docker compose down -v
+```
 
 ## Embedding-mallit
 
-Tuetut embedding-mallit (valitaan `--model` -flagilla tai .env:ssa):
-
-| Malli | Dimensio | Kieli | Sijainti |
-|-------|----------|-------|----------|
-| text-embedding-3-small | 1536 | Monikielinen | OpenAI API |
-| text-embedding-3-large | 3072 | Monikielinen | OpenAI API |
-| bge-m3 | 1024 | Monikielinen (erinomainen suomi) | Ollama (lokaali) |
-| mxbai-embed-large | 1024 | Monikielinen | Ollama (lokaali) |
-| nomic-embed-text | 768 | Englanti (kohtalainen suomi) | Ollama (lokaali) |
+| Malli | Dimensio | Kieli | Sijainti | Koko |
+|-------|----------|-------|----------|------|
+| text-embedding-3-small | 1536 | Monikielinen | OpenAI API | - |
+| text-embedding-3-large | 3072 | Monikielinen | OpenAI API | - |
+| zembed-1 (Q4_K_M) | 2560 | Monikielinen | Lokaali (GGUF) | 2.5 GB |
+| bge-m3 | 1024 | Monikielinen (erinomainen suomi) | Ollama | 1.2 GB |
+| mxbai-embed-large | 1024 | Monikielinen | Ollama | 669 MB |
+| nomic-embed-text | 768 | Englanti (kohtalainen suomi) | Ollama | 274 MB |
 
 ## LLM-mallit
 
 | Malli | Koko | Sijainti | Huom |
 |-------|------|----------|------|
-| gpt-4o-mini | - | OpenAI API | Nopea, halpa, hyva suomi |
-| gpt-4o | - | OpenAI API | Paras laatu |
-| deepseek-r1:14b | 9 GB | Ollama (lokaali) | Reasoning-malli, toimii offline |
+| o4-mini | - | OpenAI API | Nopea, edullinen |
+| gpt-4.1-mini | - | OpenAI API | Hyva yleismalli |
+| gpt-4.1 | - | OpenAI API | Paras laatu |
+| o3-mini | - | OpenAI API | Reasoning |
+| deepseek-r1:14b | 9 GB | Ollama (lokaali) | Reasoning, offline |
 | llama3.2:3b | 2 GB | Ollama (lokaali) | Kevyt, nopea |
 
-## Puolueet tietokannassa
+## Puolueet
 
 ### Eduskuntapuolueet
 SDP, KOK, PS, KESK, VIHR, VAS, RKP, KD, LIIK
@@ -140,22 +283,75 @@ PIR, EOP, FP, VKK, SKP, LIB, SML
 
 ```
 vaalikone/
-├── docker-compose.yml
-├── pyproject.toml
+├── docker-compose.yml          # Tietokanta + palvelut
+├── Dockerfile                  # API-kontin rakennus
+├── pyproject.toml              # Python-riippuvuudet
+├── alembic.ini                 # Migraatiokonfiguraatio
 ├── alembic/                    # Tietokantamigraatiot
+│   └── versions/
 ├── src/vaalikone/
 │   ├── api/                    # FastAPI + web UI
+│   │   ├── app.py              # FastAPI-sovellus
+│   │   ├── deps.py             # Riippuvuusinjektiot
 │   │   ├── routes/             # API-endpointit
-│   │   └── static/             # Web chat UI
-│   ├── cli/                    # Click CLI -komennot
-│   ├── core/                   # Config, database, auth
-│   ├── models/                 # SQLAlchemy-mallit
+│   │   │   ├── parties.py
+│   │   │   ├── representatives.py
+│   │   │   ├── documents.py
+│   │   │   ├── sources.py
+│   │   │   ├── stats.py
+│   │   │   └── query.py        # Haku + chat
+│   │   └── static/
+│   │       └── index.html      # Web chat UI
+│   ├── cli/                    # Click CLI
+│   │   ├── main.py             # CLI-ryhma
+│   │   ├── seed.py             # Puolueiden syotto
+│   │   ├── ingest.py           # Datan indeksointi
+│   │   ├── sources.py          # Lahteiden hallinta
+│   │   ├── search.py           # Tekstihaku
+│   │   ├── chat.py             # AI-chat
+│   │   ├── stats.py            # Tilastot
+│   │   └── documents.py        # Dokumenttilista
+│   ├── core/
+│   │   ├── config.py           # Asetukset (.env)
+│   │   └── database.py         # SQLAlchemy async
+│   ├── models/                 # Tietokantamallit
+│   │   ├── base.py
+│   │   ├── party.py
+│   │   ├── representative.py
+│   │   ├── source.py
+│   │   ├── document.py
+│   │   ├── embedding.py
+│   │   ├── vote.py
+│   │   └── query_log.py
 │   ├── ingest/                 # Indeksointiputki
-│   │   └── connectors/         # Eduskunta, web, PDF
-│   └── query/                  # Haku + AI-vastaus
+│   │   ├── pipeline.py         # Chunking + embedding
+│   │   ├── chunker.py          # Tekstin pilkonta
+│   │   ├── embedder.py         # Vektorointi (OpenAI/Ollama)
+│   │   └── connectors/
+│   │       ├── eduskunta.py    # Eduskunnan avoin data
+│   │       ├── web.py          # Web-scraping (trafilatura)
+│   │       └── pdf.py          # PDF-indeksointi (PyMuPDF)
+│   └── query/                  # Kyselyputki
+│       ├── pipeline.py         # Haku -> LLM -> vastaus
+│       ├── hybrid_search.py    # Teksti + semanttinen haku
+│       └── response.py         # LLM-vastauksen generointi
 ├── config/
 │   └── parties.yaml            # Puoluekonfiguraatio
-└── tests/                      # 32 testia
+├── models/
+│   └── Modelfile.zembed-1      # Ollama GGUF -malli
+└── tests/                      # 32+ testia
+    ├── conftest.py
+    ├── test_api.py
+    ├── test_cli.py
+    ├── test_config.py
+    ├── test_models.py
+    ├── test_chunker.py
+    ├── test_eduskunta.py
+    ├── test_web_connector.py
+    ├── test_pdf_connector.py
+    ├── test_search.py
+    ├── test_e2e.py
+    └── ...
 ```
 
 ## Kehitys
@@ -167,10 +363,59 @@ python -m pytest tests/ -v
 # Linting
 ruff check src/ tests/
 
-# Uusi migraatio
+# Uusi tietokantamigraatio
 alembic revision --autogenerate -m "kuvaus"
 alembic upgrade head
+
+# Tietokannan tyhjennys ja uudelleenluonti
+docker compose down -v
+docker compose up -d postgres redis
+alembic upgrade head
+vaalikone seed parties
 ```
+
+## Vianmaaritys
+
+### Portti varattu
+
+```bash
+lsof -ti:8003 | xargs kill -9
+```
+
+### Tietokantayhteys ei toimi
+
+```bash
+docker compose ps          # Tarkista etta postgres on "healthy"
+docker compose logs postgres  # Katso logit
+```
+
+### Embedding-virhe "expected N dimensions"
+
+Eri embedding-malleilla on eri dimensiot. Tyhjenna vanhat ja generoi uudelleen:
+
+```bash
+# PostgreSQL:ssa
+docker exec $(docker ps -qf "name=postgres") psql -U vaalikone -c "DELETE FROM embeddings;"
+docker exec $(docker ps -qf "name=postgres") psql -U vaalikone -c "ALTER TABLE embeddings ALTER COLUMN embedding TYPE vector;"
+
+# Generoi uudelleen
+vaalikone ingest embed --model <uusi-malli> --force
+```
+
+### Ollama ei vastaa
+
+```bash
+ollama serve    # Kaynnista Ollama
+ollama list     # Tarkista mallit
+```
+
+## Datalähteet
+
+- **Eduskunnan avoin data**: https://avoindata.eduskunta.fi (kansanedustajat, aanestykset, asiakirjat)
+- **Puolueiden verkkosivut**: vaaliohjelmat, varjobudjetit, politiikkaohjelmat
+- **vaalit.fi**: ehdokasdata (tuleva integraatio)
+
+> Huom: Eduskunnan nykyinen API (avoindata.eduskunta.fi) poistuu kaytosta vuoden 2026 lopussa. Uusi API tulee osoitteeseen eduskunta.fi/avoin-data.
 
 ## Lisenssi
 
