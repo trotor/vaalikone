@@ -31,10 +31,22 @@ class ChatRequest(BaseModel):
 
 @router.post("/chat")
 async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db)):
+    model = request.model.strip() if request.model else "gpt-4o-mini"
+    if not model or model == "__text_only__":
+        # Text-only mode — return search results without LLM
+        results = await text_search(db, request.question, limit=10, party_filter=request.party)
+        return {
+            "answer": "\n\n".join(
+                f"[{r.get('party', '?')}] {r.get('title', '')}\n{(r.get('snippet') or '')[:300]}"
+                for r in results
+            ) if results else "Ei hakutuloksia.",
+            "sources": [{"party": r.get("party"), "title": r.get("title"), "url": r.get("source_url")} for r in results],
+            "model": "text-only",
+        }
     result = await run_query(
         db,
         question=request.question,
-        model=request.model,
+        model=model,
         party_filter=request.party,
         use_semantic=request.use_semantic,
     )
