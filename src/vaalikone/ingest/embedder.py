@@ -1,5 +1,14 @@
+import os
+
 import httpx
 import litellm
+
+# Ensure .env is loaded for API keys
+from vaalikone.core.config import get_settings
+
+_settings = get_settings()
+if _settings.OPENAI_API_KEY:
+    os.environ.setdefault("OPENAI_API_KEY", _settings.OPENAI_API_KEY)
 
 
 async def get_embedding(text: str, model: str = "text-embedding-3-small") -> list[float]:
