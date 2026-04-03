@@ -1,8 +1,10 @@
+import httpx
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from vaalikone.api.deps import get_db
+from vaalikone.core.config import get_settings
 from vaalikone.query.hybrid_search import text_search
 from vaalikone.query.pipeline import query as run_query
 
@@ -37,3 +39,43 @@ async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db)):
         use_semantic=request.use_semantic,
     )
     return result
+
+
+@router.get("/connectivity")
+async def check_connectivity():
+    """Check which services are available: OpenAI, Ollama, internet."""
+    settings = get_settings()
+    status = {
+        "openai": False,
+        "ollama": False,
+        "internet": False,
+        "ollama_models": [],
+    }
+
+    # Check Ollama
+    try:
+        async with httpx.AsyncClient(timeout=3) as client:
+            resp = await client.get("http://localhost:11434/api/tags")
+            if resp.status_code == 200:
+                status["ollama"] = True
+                data = resp.json()
+                status["ollama_models"] = [
+                    m["name"] for m in data.get("models", [])
+                    if "embed" not in m["name"]  # filter out embedding models
+                ]
+    except Exception:
+        pass
+
+    # Check internet (OpenAI)
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            resp = await client.get("https://api.openai.com/v1/models",
+                                    headers={"Authorization": f"Bearer {settings.OPENAI_API_KEY or ''}"})
+            if resp.status_code in (200, 401):  # 401 = reachable but bad key
+                status["internet"] = True
+            if resp.status_code == 200:
+                status["openai"] = True
+    except Exception:
+        pass
+
+    return status

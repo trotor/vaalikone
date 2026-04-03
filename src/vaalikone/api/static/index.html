@@ -144,6 +144,26 @@
             transition: border-color 0.2s;
         }
         .welcome .example:hover { border-color: #3b82f6; color: #f1f5f9; }
+        .status-bar {
+            background: #1e293b;
+            border-bottom: 1px solid #334155;
+            padding: 6px 24px;
+            font-size: 12px;
+            display: flex;
+            gap: 16px;
+            align-items: center;
+        }
+        .status-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 4px;
+        }
+        .status-dot.green { background: #22c55e; }
+        .status-dot.red { background: #ef4444; }
+        .status-dot.yellow { background: #eab308; }
+        .status-item { color: #94a3b8; }
     </style>
 </head>
 <body>
@@ -151,6 +171,11 @@
         <h1>Vaalikone Chat</h1>
         <div class="stats" id="stats"></div>
     </header>
+    <div class="status-bar" id="statusBar">
+        <span class="status-item" id="statusInternet"><span class="status-dot yellow"></span>Internet: tarkistetaan...</span>
+        <span class="status-item" id="statusOpenai"><span class="status-dot yellow"></span>OpenAI: tarkistetaan...</span>
+        <span class="status-item" id="statusOllama"><span class="status-dot yellow"></span>Ollama: tarkistetaan...</span>
+    </div>
     <div class="filters">
         <label>Puolue:</label>
         <select id="partyFilter">
@@ -158,10 +183,7 @@
         </select>
         <label><input type="checkbox" id="useSemantic" checked> Semanttinen haku</label>
         <label>Malli:</label>
-        <select id="modelSelect">
-            <option value="gpt-4o-mini">GPT-4o Mini</option>
-            <option value="gpt-4o">GPT-4o</option>
-        </select>
+        <select id="modelSelect"></select>
     </div>
     <div class="chat-area" id="chatArea">
         <div class="welcome" id="welcome">
@@ -199,6 +221,67 @@
             div.textContent = q;
             div.addEventListener('click', () => { input.value = q; send(); });
             examplesEl.appendChild(div);
+        });
+
+        let connectivity = { openai: false, ollama: false, internet: false, ollama_models: [] };
+
+        function setStatus(id, ok, label) {
+            const el = document.getElementById(id);
+            el.textContent = '';
+            const dot = document.createElement('span');
+            dot.className = 'status-dot ' + (ok ? 'green' : 'red');
+            el.appendChild(dot);
+            el.appendChild(document.createTextNode(label));
+        }
+
+        function populateModels() {
+            const sel = document.getElementById('modelSelect');
+            sel.textContent = '';
+
+            if (connectivity.openai) {
+                ['gpt-4o-mini', 'gpt-4o'].forEach(m => {
+                    const opt = document.createElement('option');
+                    opt.value = m;
+                    opt.textContent = m + ' (OpenAI)';
+                    sel.appendChild(opt);
+                });
+            }
+
+            if (connectivity.ollama && connectivity.ollama_models.length > 0) {
+                connectivity.ollama_models.forEach(m => {
+                    const opt = document.createElement('option');
+                    opt.value = 'ollama/' + m;
+                    opt.textContent = m + ' (lokaali)';
+                    sel.appendChild(opt);
+                });
+            }
+
+            // If no models, add a text-only mode
+            if (sel.options.length === 0) {
+                const opt = document.createElement('option');
+                opt.value = '__text_only__';
+                opt.textContent = 'Vain tekstihaku (ei LLM:aa)';
+                sel.appendChild(opt);
+            }
+
+            // Auto-disable semantic search if offline and no OpenAI
+            if (!connectivity.openai) {
+                document.getElementById('useSemantic').checked = false;
+            }
+        }
+
+        // Check connectivity
+        fetch('/api/v1/connectivity').then(r => r.json()).then(data => {
+            connectivity = data;
+            setStatus('statusInternet', data.internet, 'Internet: ' + (data.internet ? 'OK' : 'ei yhteytta'));
+            setStatus('statusOpenai', data.openai, 'OpenAI: ' + (data.openai ? 'OK' : 'ei kaytettavissa'));
+            setStatus('statusOllama', data.ollama, 'Ollama: ' + (data.ollama ? data.ollama_models.length + ' mallia' : 'ei kaytettavissa'));
+            populateModels();
+        }).catch(() => {
+            setStatus('statusInternet', false, 'Internet: ei yhteytta');
+            setStatus('statusOpenai', false, 'OpenAI: ei kaytettavissa');
+            setStatus('statusOllama', false, 'Ollama: ei kaytettavissa');
+            populateModels();
         });
 
         // Load stats
@@ -295,13 +378,34 @@
                 const model = document.getElementById('modelSelect').value;
                 const useSemantic = document.getElementById('useSemantic').checked;
 
-                const resp = await fetch('/api/v1/chat', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ question: question, party: party, model: model, use_semantic: useSemantic }),
-                });
-                const data = await resp.json();
-                populateAssistantMessage(loadingMsg, data);
+                if (model === '__text_only__') {
+                    // Text search only - no LLM
+                    const resp = await fetch('/api/v1/search?q=' + encodeURIComponent(question) + (party ? '&party=' + party : '') + '&limit=5');
+                    const data = await resp.json();
+                    if (data.results && data.results.length > 0) {
+                        const answer = data.results.map(r =>
+                            '[' + (r.party || '?') + '] ' + (r.title || '') + '\n' +
+                            (r.snippet || r.chunk_text || '').replace(/<\/?b>/g, '').substring(0, 300) + '...'
+                        ).join('\n\n');
+                        populateAssistantMessage(loadingMsg, {
+                            answer: 'Hakutulokset (ilman AI-vastausta):\n\n' + answer,
+                            sources: data.results.map(r => ({ party: r.party, title: r.title })),
+                        });
+                    } else {
+                        populateAssistantMessage(loadingMsg, {
+                            answer: 'Ei hakutuloksia.',
+                            sources: [],
+                        });
+                    }
+                } else {
+                    const resp = await fetch('/api/v1/chat', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ question: question, party: party, model: model, use_semantic: useSemantic }),
+                    });
+                    const data = await resp.json();
+                    populateAssistantMessage(loadingMsg, data);
+                }
             } catch (err) {
                 showError(loadingMsg, err.message);
             }
