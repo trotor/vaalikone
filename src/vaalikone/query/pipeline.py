@@ -9,7 +9,7 @@ async def query(
     session: AsyncSession,
     question: str,
     model: str = "gpt-4o",
-    embed_model: str = "text-embedding-3-small",
+    embed_model: str = "ollama/bge-m3",
     party_filter: str | None = None,
     use_semantic: bool = False,
     limit: int = 10,
