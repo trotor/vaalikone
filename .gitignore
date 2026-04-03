@@ -16,3 +16,7 @@ venv/
 htmlcov/
 .mypy_cache/
 .playwright-mcp/
+.DS_Store
+*.log
+/tmp/
+node_modules/
