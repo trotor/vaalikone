@@ -7,6 +7,7 @@ from sqlalchemy.orm import sessionmaker
 
 from vaalikone.core.config import get_settings
 from vaalikone.ingest.connectors.eduskunta import EduskuntaClient
+from vaalikone.ingest.connectors.pdf import fetch_and_extract_pdf
 from vaalikone.ingest.connectors.web import fetch_and_extract
 from vaalikone.models.document import Document, ContentType
 from vaalikone.models.party import Party
@@ -181,7 +182,52 @@ def votes(max_pages: int | None):
     asyncio.run(_ingest_votes(max_pages))
 
 
+async def _ingest_pdf(url: str, party_abbr: str | None = None, title_override: str | None = None):
+    click.echo(f"Downloading PDF {url}...")
+    content = await fetch_and_extract_pdf(url)
+    if not content:
+        click.echo("Failed to extract text from PDF.")
+        return
+
+    title = title_override or content["title"]
+    click.echo(f"Extracted: {title} ({len(content['text'])} chars, {content['pages']} pages)")
+
+    engine, async_session = await _get_session()
+    async with async_session() as session:
+        party = None
+        if party_abbr:
+            party = await _find_party(session, party_abbr)
+
+        source = Source(
+            source_type=SourceType.PDF,
+            url=url,
+            title=title,
+            status=SourceStatus.INDEXED,
+            party_id=party.id if party else None,
+        )
+        session.add(source)
+        await session.flush()
+
+        doc = Document(
+            source_id=source.id,
+            title=title,
+            content_text=content["text"],
+            content_type=ContentType.MUU,
+            party_id=party.id if party else None,
+            language="fi",
+        )
+        session.add(doc)
+        await session.commit()
+        click.echo(f"Stored PDF document: {title}")
+
+    await engine.dispose()
+
+
 async def _ingest_url(url: str, party_abbr: str | None = None):
+    if url.lower().endswith(".pdf"):
+        await _ingest_pdf(url, party_abbr)
+        return
+
     click.echo(f"Fetching {url}...")
     content = await fetch_and_extract(url)
     if not content:
@@ -230,6 +276,68 @@ async def _ingest_url(url: str, party_abbr: str | None = None):
 def url(url: str, party: str | None):
     """Ingest content from a URL."""
     asyncio.run(_ingest_url(url, party))
+
+
+@ingest.command()
+@click.argument("url")
+@click.option("--party", default=None, help="Party abbreviation (e.g. SDP)")
+@click.option("--title", default=None, help="Override document title")
+def pdf(url: str, party: str | None, title: str | None):
+    """Ingest a PDF document from URL."""
+    asyncio.run(_ingest_pdf(url, party, title))
+
+
+@ingest.command(name="pdf-file")
+@click.argument("file_path", type=click.Path(exists=True))
+@click.option("--party", default=None, help="Party abbreviation")
+@click.option("--title", default=None, help="Override document title")
+def pdf_file(file_path: str, party: str | None, title: str | None):
+    """Ingest a local PDF file."""
+    from vaalikone.ingest.connectors.pdf import extract_pdf_bytes
+
+    async def _run():
+        with open(file_path, "rb") as f:
+            pdf_bytes = f.read()
+
+        content = extract_pdf_bytes(pdf_bytes, file_path)
+        if not content:
+            click.echo("Failed to extract text from PDF.")
+            return
+
+        doc_title = title or content["title"]
+        click.echo(f"Extracted: {doc_title} ({len(content['text'])} chars, {content['pages']} pages)")
+
+        engine, async_session = await _get_session()
+        async with async_session() as session:
+            party_obj = None
+            if party:
+                party_obj = await _find_party(session, party)
+
+            source = Source(
+                source_type=SourceType.PDF,
+                url=file_path,
+                title=doc_title,
+                status=SourceStatus.INDEXED,
+                party_id=party_obj.id if party_obj else None,
+            )
+            session.add(source)
+            await session.flush()
+
+            doc = Document(
+                source_id=source.id,
+                title=doc_title,
+                content_text=content["text"],
+                content_type=ContentType.MUU,
+                party_id=party_obj.id if party_obj else None,
+                language="fi",
+            )
+            session.add(doc)
+            await session.commit()
+            click.echo(f"Stored PDF document: {doc_title}")
+
+        await engine.dispose()
+
+    asyncio.run(_run())
 
 
 @ingest.command()
