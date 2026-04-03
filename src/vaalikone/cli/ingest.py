@@ -381,7 +381,7 @@ def crawl(seed_url: str, party: str | None, depth: int, max_pages: int, use_llm:
                 existing = await session.execute(
                     select(Source).where(Source.url == page["url"])
                 )
-                if existing.scalar_one_or_none():
+                if existing.scalars().first():
                     click.echo(f"  Skip (exists): {page['url']}")
                     continue
 

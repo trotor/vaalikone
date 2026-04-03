@@ -21,6 +21,12 @@ POLITICAL_KEYWORDS = {
     "työllisyys", "talous", "eläke", "asuminen", "liikenne", "ympäristö",
     "oikeus", "tasa-arvo", "kulttuuri", "maatalous", "metsä",
     "program", "politik", "valprogram", "partiprogram",  # Swedish
+    # Additional Finnish political terms
+    "puolue", "liike", "kansanliike", "puoluekokous", "vaali", "äänestys",
+    "kansanedustaja", "ministeri", "yhteiskunta", "hyvinvointi", "uudistus",
+    "feminismi", "tasa-arvo", "ihmisoikeus", "demokratia", "kansallinen",
+    "sosialismi", "kommunismi", "vasemmisto", "oikeisto", "keskusta",
+    "ohjelmajulistus", "periaatteet", "tavoitteet", "jäsen", "liity",
 }
 
 # URL patterns to skip
@@ -53,15 +59,15 @@ def _is_likely_political(text: str, url: str) -> bool:
     Returns True if text or URL contains political keywords."""
     combined = (text[:2000] + " " + url).lower()
     matches = sum(1 for kw in POLITICAL_KEYWORDS if kw in combined)
-    # Need at least 2 keyword matches to be considered political
-    return matches >= 2
+    # Need at least 1 keyword match to be considered political
+    return matches >= 1
 
 
 def _extract_links(html: str, base_url: str) -> list[str]:
-    """Extract all internal links from HTML."""
+    """Extract all internal links from HTML anchor tags only."""
     links = set()
-    # Simple regex for href extraction — works well enough for crawling
-    for match in re.finditer(r'href=["\']([^"\']+)["\']', html):
+    # Only match <a href="..."> tags to avoid CSS/font/media links
+    for match in re.finditer(r'<a\b[^>]*\bhref=["\']([^"\']+)["\']', html, re.IGNORECASE):
         href = match.group(1)
         if href.startswith("#") or href.startswith("mailto:") or href.startswith("tel:"):
             continue
@@ -80,7 +86,7 @@ async def crawl_site(
     seed_url: str,
     max_depth: int = 2,
     max_pages: int = 50,
-    min_content_length: int = 500,
+    min_content_length: int = 200,
     use_llm_filter: bool = False,
     callback=None,
 ) -> list[dict]:
