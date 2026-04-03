@@ -341,6 +341,80 @@ def pdf_file(file_path: str, party: str | None, title: str | None):
 
 
 @ingest.command()
+@click.argument("seed_url")
+@click.option("--party", default=None, help="Party abbreviation (e.g. SDP)")
+@click.option("--depth", default=2, help="Max link depth to follow (default 2)")
+@click.option("--max-pages", default=50, help="Max pages to crawl (default 50)")
+@click.option("--use-llm", is_flag=True, help="Use local LLM for relevance filtering")
+def crawl(seed_url: str, party: str | None, depth: int, max_pages: int, use_llm: bool):
+    """Crawl a website recursively, indexing political content."""
+    from vaalikone.ingest.connectors.crawler import crawl_site
+
+    async def _run():
+        engine, async_session = await _get_session()
+
+        async def on_found(url, title, chars):
+            click.echo(f"  Found: {title} ({chars:,} chars)")
+
+        click.echo(f"Crawling {seed_url} (depth={depth}, max={max_pages}, llm={'on' if use_llm else 'off'})...")
+        pages = await crawl_site(
+            seed_url,
+            max_depth=depth,
+            max_pages=max_pages,
+            use_llm_filter=use_llm,
+            callback=on_found,
+        )
+
+        if not pages:
+            click.echo("No relevant pages found.")
+            await engine.dispose()
+            return
+
+        async with async_session() as session:
+            party_obj = None
+            if party:
+                party_obj = await _find_party(session, party)
+
+            stored = 0
+            for page in pages:
+                # Check if URL already indexed
+                existing = await session.execute(
+                    select(Source).where(Source.url == page["url"])
+                )
+                if existing.scalar_one_or_none():
+                    click.echo(f"  Skip (exists): {page['url']}")
+                    continue
+
+                source = Source(
+                    source_type=SourceType.WEBSITE,
+                    url=page["url"],
+                    title=page["title"],
+                    status=SourceStatus.INDEXED,
+                    party_id=party_obj.id if party_obj else None,
+                )
+                session.add(source)
+                await session.flush()
+
+                doc = Document(
+                    source_id=source.id,
+                    title=page["title"],
+                    content_text=page["text"],
+                    content_type=ContentType.MUU,
+                    party_id=party_obj.id if party_obj else None,
+                    language="fi",
+                )
+                session.add(doc)
+                stored += 1
+
+            await session.commit()
+            click.echo(f"\nCrawled {len(pages)} pages, stored {stored} new documents.")
+
+        await engine.dispose()
+
+    asyncio.run(_run())
+
+
+@ingest.command()
 @click.option("--model", default=None, help="Embedding model (default from config)")
 @click.option("--force", is_flag=True, help="Re-embed all documents")
 def embed(model: str | None, force: bool):
