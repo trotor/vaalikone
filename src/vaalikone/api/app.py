@@ -4,6 +4,7 @@ from vaalikone.api.routes.parties import router as parties_router
 from vaalikone.api.routes.representatives import router as representatives_router
 from vaalikone.api.routes.sources import router as sources_router
 from vaalikone.api.routes.stats import router as stats_router
+from vaalikone.api.routes.query import router as query_router
 
 app = FastAPI(title="Vaalikone API", version="0.1.0")
 
@@ -11,6 +12,7 @@ app.include_router(parties_router)
 app.include_router(representatives_router)
 app.include_router(sources_router)
 app.include_router(stats_router)
+app.include_router(query_router)
 
 
 @app.get("/health")
