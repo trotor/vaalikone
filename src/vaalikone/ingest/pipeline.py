@@ -74,15 +74,19 @@ async def process_all_documents(
 
     total_chunks = 0
     for doc in documents:
-        n = await process_document(
-            session,
-            doc,
-            embed_model=embed_model,
-            chunk_size=chunk_size,
-            overlap=overlap,
-        )
-        total_chunks += n
-        click.echo(f"  {doc.title}: {n} chunks")
+        try:
+            n = await process_document(
+                session,
+                doc,
+                embed_model=embed_model,
+                chunk_size=chunk_size,
+                overlap=overlap,
+            )
+            await session.commit()
+            total_chunks += n
+            click.echo(f"  {doc.title}: {n} chunks")
+        except Exception as e:
+            await session.rollback()
+            click.echo(f"  {doc.title}: ERROR - {e}")
 
-    await session.commit()
     return len(documents), total_chunks

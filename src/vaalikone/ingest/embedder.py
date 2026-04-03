@@ -23,10 +23,23 @@ async def get_embeddings_batch(
 
 async def _ollama_embed(text: str, model_name: str) -> list[float]:
     """Direct Ollama API call for embeddings."""
-    async with httpx.AsyncClient(timeout=60) as client:
-        resp = await client.post(
-            "http://localhost:11434/api/embeddings",
-            json={"model": model_name, "prompt": text},
-        )
-        resp.raise_for_status()
-        return resp.json()["embedding"]
+    # Truncate very long texts to ~2000 words to avoid OOM
+    words = text.split()
+    if len(words) > 2000:
+        text = " ".join(words[:2000])
+
+    async with httpx.AsyncClient(timeout=120) as client:
+        for attempt in range(3):
+            try:
+                resp = await client.post(
+                    "http://localhost:11434/api/embeddings",
+                    json={"model": model_name, "prompt": text},
+                )
+                resp.raise_for_status()
+                return resp.json()["embedding"]
+            except (httpx.HTTPStatusError, httpx.ConnectError) as e:
+                if attempt < 2:
+                    import asyncio
+                    await asyncio.sleep(2)
+                    continue
+                raise
