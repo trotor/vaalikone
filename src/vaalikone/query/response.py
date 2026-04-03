@@ -1,4 +1,12 @@
+import os
+
 import litellm
+
+from vaalikone.core.config import get_settings
+
+_settings = get_settings()
+if _settings.OPENAI_API_KEY:
+    os.environ.setdefault("OPENAI_API_KEY", _settings.OPENAI_API_KEY)
 
 
 async def generate_response(

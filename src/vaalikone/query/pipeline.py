@@ -16,12 +16,33 @@ async def query(
 ) -> dict:
     """Run a query through the pipeline: search -> generate response."""
 
-    # Search for relevant context
+    # Hybrid search: combine text search and semantic search for best results
+    text_results = await text_search(session, question, limit=limit, party_filter=party_filter)
+
+    semantic_results = []
     if use_semantic:
-        query_vec = await get_embedding(question, model=embed_model)
-        results = await semantic_search(session, query_vec, limit=limit, party_filter=party_filter)
-    else:
-        results = await text_search(session, question, limit=limit, party_filter=party_filter)
+        try:
+            query_vec = await get_embedding(question, model=embed_model)
+            semantic_results = await semantic_search(
+                session, query_vec, limit=limit, party_filter=party_filter
+            )
+        except Exception:
+            pass  # Fall back to text-only if embedding fails
+
+    # Merge: text results first (exact matches), then semantic (conceptual matches)
+    seen_docs = set()
+    results = []
+    for r in text_results:
+        key = r.get("document_id")
+        if key not in seen_docs:
+            seen_docs.add(key)
+            results.append(r)
+    for r in semantic_results:
+        key = r.get("document_id")
+        if key not in seen_docs:
+            seen_docs.add(key)
+            results.append(r)
+    results = results[:limit]
 
     if not results:
         return {
