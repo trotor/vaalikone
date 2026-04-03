@@ -7,6 +7,7 @@ from vaalikone.cli.stats import stats
 from vaalikone.cli.search import search
 from vaalikone.cli.chat import chat
 from vaalikone.cli.documents import documents
+from vaalikone.cli.compare_embeddings import compare_embeddings
 
 
 @click.group()
@@ -22,6 +23,7 @@ cli.add_command(stats)
 cli.add_command(search)
 cli.add_command(chat)
 cli.add_command(documents)
+cli.add_command(compare_embeddings)
 
 
 if __name__ == "__main__":

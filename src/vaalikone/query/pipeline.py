@@ -24,7 +24,8 @@ async def query(
         try:
             query_vec = await get_embedding(question, model=embed_model)
             semantic_results = await semantic_search(
-                session, query_vec, limit=limit, party_filter=party_filter
+                session, query_vec, limit=limit, party_filter=party_filter,
+                embed_model=embed_model,
             )
         except Exception:
             pass  # Fall back to text-only if embedding fails

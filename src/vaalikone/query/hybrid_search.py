@@ -119,9 +119,11 @@ async def semantic_search(
     query_embedding: list[float],
     limit: int = 10,
     party_filter: str | None = None,
+    embed_model: str | None = None,
 ) -> list[dict]:
     """Semantic similarity search using pgvector.
-    Requires embeddings to be generated first."""
+    Requires embeddings to be generated first.
+    Filters by embed_model to avoid mixing different dimension embeddings."""
 
     from pgvector.sqlalchemy import Vector
 
@@ -140,6 +142,10 @@ async def semantic_search(
         .join(Document, Embedding.document_id == Document.id)
         .outerjoin(Party, Document.party_id == Party.id)
     )
+
+    # Filter by embedding model to avoid dimension mismatches
+    if embed_model:
+        stmt = stmt.where(Embedding.model_name == embed_model)
 
     if party_filter:
         stmt = stmt.where(Party.abbreviation == party_filter.upper())
