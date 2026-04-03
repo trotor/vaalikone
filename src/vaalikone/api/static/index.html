@@ -390,12 +390,34 @@
             if (data.sources && data.sources.length > 0) {
                 const sourcesDiv = document.createElement('div');
                 sourcesDiv.className = 'sources';
-                sourcesDiv.appendChild(document.createTextNode('Lahteet: '));
+                const label = document.createElement('div');
+                label.style.marginBottom = '6px';
+                label.style.fontWeight = '500';
+                label.textContent = 'Lahteet:';
+                sourcesDiv.appendChild(label);
                 data.sources.forEach(s => {
+                    const row = document.createElement('div');
+                    row.style.marginBottom = '4px';
                     const tag = document.createElement('span');
                     tag.className = 'source-tag';
-                    tag.textContent = '[' + (s.party || '?') + '] ' + (s.title || '');
-                    sourcesDiv.appendChild(tag);
+                    tag.textContent = s.party || '?';
+                    row.appendChild(tag);
+                    if (s.url) {
+                        const link = document.createElement('a');
+                        link.href = s.url;
+                        link.target = '_blank';
+                        link.rel = 'noopener noreferrer';
+                        link.textContent = s.title || s.url;
+                        link.style.color = '#60a5fa';
+                        link.style.textDecoration = 'none';
+                        link.style.marginLeft = '6px';
+                        row.appendChild(link);
+                    } else {
+                        const titleSpan = document.createElement('span');
+                        titleSpan.textContent = ' ' + (s.title || '');
+                        row.appendChild(titleSpan);
+                    }
+                    sourcesDiv.appendChild(row);
                 });
                 container.appendChild(sourcesDiv);
             }
@@ -443,7 +465,7 @@
                         ).join('\n\n');
                         populateAssistantMessage(loadingMsg, {
                             answer: 'Hakutulokset (ilman AI-vastausta):\n\n' + answer,
-                            sources: data.results.map(r => ({ party: r.party, title: r.title })),
+                            sources: data.results.map(r => ({ party: r.party, title: r.title, url: r.source_url })),
                         });
                     } else {
                         populateAssistantMessage(loadingMsg, {

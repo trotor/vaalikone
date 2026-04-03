@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from vaalikone.models.document import Document
 from vaalikone.models.embedding import Embedding
 from vaalikone.models.party import Party
+from vaalikone.models.source import Source
 
 
 async def text_search(
@@ -34,6 +35,7 @@ async def text_search(
             Document.title,
             Document.content_type,
             Party.abbreviation.label("party"),
+            Source.url.label("source_url"),
             ts_rank.label("relevance"),
             func.ts_headline(
                 "finnish",
@@ -44,6 +46,7 @@ async def text_search(
             ilike_match.label("ilike_hit"),
         )
         .outerjoin(Party, Document.party_id == Party.id)
+        .outerjoin(Source, Document.source_id == Source.id)
         .where(ts_match | ilike_match)
     )
 
@@ -66,6 +69,7 @@ async def text_search(
             "title": row.title,
             "content_type": row.content_type.value if row.content_type else None,
             "party": row.party,
+            "source_url": row.source_url,
             "relevance": float(row.relevance) if row.relevance else 0.0,
             "snippet": snippet,
         })
@@ -137,10 +141,12 @@ async def semantic_search(
             Document.title,
             Document.content_type,
             Party.abbreviation.label("party"),
+            Source.url.label("source_url"),
             distance.label("distance"),
         )
         .join(Document, Embedding.document_id == Document.id)
         .outerjoin(Party, Document.party_id == Party.id)
+        .outerjoin(Source, Document.source_id == Source.id)
     )
 
     # Filter by embedding model to avoid dimension mismatches
@@ -162,6 +168,7 @@ async def semantic_search(
             "title": row.title,
             "content_type": row.content_type.value if row.content_type else None,
             "party": row.party,
+            "source_url": row.source_url,
             "similarity": 1.0 - float(row.distance),
         }
         for row in rows

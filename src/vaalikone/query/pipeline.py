@@ -55,14 +55,18 @@ async def query(
     # Generate response
     answer = await generate_response(question, results, model=model)
 
-    # Deduplicate sources
+    # Deduplicate sources with URLs
     seen = set()
     sources = []
     for r in results:
         key = (r.get("party"), r.get("title"))
         if key not in seen:
             seen.add(key)
-            sources.append({"party": r.get("party"), "title": r.get("title")})
+            sources.append({
+                "party": r.get("party"),
+                "title": r.get("title"),
+                "url": r.get("source_url"),
+            })
 
     return {
         "answer": answer,
