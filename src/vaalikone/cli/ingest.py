@@ -230,3 +230,27 @@ async def _ingest_url(url: str, party_abbr: str | None = None):
 def url(url: str, party: str | None):
     """Ingest content from a URL."""
     asyncio.run(_ingest_url(url, party))
+
+
+@ingest.command()
+@click.option("--model", default=None, help="Embedding model (default from config)")
+@click.option("--force", is_flag=True, help="Re-embed all documents")
+def embed(model: str | None, force: bool):
+    """Generate embeddings for all documents."""
+
+    async def _run():
+        from vaalikone.ingest.pipeline import process_all_documents
+
+        settings = get_settings()
+        embed_model = model or settings.DEFAULT_EMBED_MODEL
+
+        engine, async_session = await _get_session()
+        async with async_session() as session:
+            click.echo(f"Embedding documents with {embed_model}...")
+            n_docs, n_chunks = await process_all_documents(
+                session, embed_model=embed_model, force=force
+            )
+            click.echo(f"\nProcessed {n_docs} documents, {n_chunks} chunks total.")
+        await engine.dispose()
+
+    asyncio.run(_run())
