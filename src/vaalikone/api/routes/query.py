@@ -59,9 +59,11 @@ async def check_connectivity():
             if resp.status_code == 200:
                 status["ollama"] = True
                 data = resp.json()
+                # Filter: only text LLMs, not embedding or vision models
+                skip = {"embed", "llava", "moondream", "bge", "mxbai", "nomic"}
                 status["ollama_models"] = [
                     m["name"] for m in data.get("models", [])
-                    if "embed" not in m["name"]  # filter out embedding models
+                    if not any(s in m["name"].lower() for s in skip)
                 ]
     except Exception:
         pass
