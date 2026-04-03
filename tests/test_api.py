@@ -43,3 +43,22 @@ async def test_stats(client):
     assert "representatives" in data
     assert "total_data_points" in data
     assert all(isinstance(v, int) for v in data.values())
+
+
+async def test_search_endpoint(client):
+    resp = await client.get("/api/v1/search?q=verotus")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "results" in data
+    assert "count" in data
+
+
+async def test_list_documents(client):
+    resp = await client.get("/api/v1/documents")
+    assert resp.status_code == 200
+    assert isinstance(resp.json(), list)
+
+
+async def test_get_party_not_found(client):
+    resp = await client.get("/api/v1/parties/NOTEXIST")
+    assert resp.status_code == 404

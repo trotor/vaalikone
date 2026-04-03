@@ -6,6 +6,7 @@ from vaalikone.cli.sources import sources
 from vaalikone.cli.stats import stats
 from vaalikone.cli.search import search
 from vaalikone.cli.chat import chat
+from vaalikone.cli.documents import documents
 
 
 @click.group()
@@ -20,6 +21,7 @@ cli.add_command(sources)
 cli.add_command(stats)
 cli.add_command(search)
 cli.add_command(chat)
+cli.add_command(documents)
 
 
 if __name__ == "__main__":
