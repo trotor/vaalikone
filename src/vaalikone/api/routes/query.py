@@ -75,15 +75,69 @@ class SuggestRequest(BaseModel):
     answer: str
 
 
-@router.post("/suggest")
-async def suggest_followups(request: SuggestRequest):
-    """Generate follow-up question suggestions using a cheap model."""
+# Pre-generated random question pool (filled lazily)
+_random_question_pool: list[str] = []
+
+
+async def _fill_random_pool(db: AsyncSession, count: int = 10):
+    """Generate random questions from document chunks using a cheap model."""
     import os
+    import litellm
+    from vaalikone.models.embedding import Embedding
+    from vaalikone.models.document import Document
+    from vaalikone.models.party import Party
+
+    settings = get_settings()
+    if settings.OPENAI_API_KEY:
+        os.environ.setdefault("OPENAI_API_KEY", settings.OPENAI_API_KEY)
+
+    result = await db.execute(
+        select(Embedding.chunk_text, Document.title, Party.abbreviation)
+        .join(Document, Embedding.document_id == Document.id)
+        .outerjoin(Party, Document.party_id == Party.id)
+        .order_by(func.random())
+        .limit(count)
+    )
+    chunks = result.all()
+
+    for chunk_text, title, party in chunks:
+        try:
+            resp = await litellm.acompletion(
+                model="gpt-4.1-nano",
+                messages=[{
+                    "role": "user",
+                    "content": (
+                        f"Puolue: {party or '?'}, dokumentti: {title or ''}\n"
+                        f"Teksti: {chunk_text[:400]}\n\n"
+                        "Keksi 1 lyhyt kiinnostava kysymys suomalaisesta politiikasta taman perusteella. "
+                        "Palauta VAIN kysymys."
+                    ),
+                }],
+                max_tokens=50,
+            )
+            q = (resp.choices[0].message.content or "").strip().strip('"')
+            if q and 10 < len(q) < 150 and "?" in q:
+                _random_question_pool.append(q)
+        except Exception:
+            pass
+
+
+@router.post("/suggest")
+async def suggest_followups(request: SuggestRequest, db: AsyncSession = Depends(get_db)):
+    """Return follow-up suggestions: 2 contextual + 1 random from pool."""
+    import os
+    import random
     import litellm
     settings = get_settings()
     if settings.OPENAI_API_KEY:
         os.environ.setdefault("OPENAI_API_KEY", settings.OPENAI_API_KEY)
 
+    # Fill pool if empty (lazy init, runs once)
+    if len(_random_question_pool) < 3:
+        await _fill_random_pool(db, count=10)
+
+    # Generate 2 contextual follow-ups
+    contextual = []
     try:
         resp = await litellm.acompletion(
             model="gpt-4.1-nano",
@@ -91,23 +145,33 @@ async def suggest_followups(request: SuggestRequest):
                 {
                     "role": "system",
                     "content": (
-                        "Generoi 3 lyhyttä jatkokysymystä suomalaisesta politiikasta edellisen "
-                        "kysymyksen ja vastauksen perusteella. Palauta VAIN 3 kysymystä, yksi per rivi, "
+                        "Generoi 2 lyhyttä jatkokysymystä suomalaisesta politiikasta edellisen "
+                        "kysymyksen ja vastauksen perusteella. Palauta VAIN 2 kysymystä, yksi per rivi, "
                         "ilman numerointia tai muuta muotoilua. Suomeksi."
                     ),
                 },
                 {
                     "role": "user",
-                    "content": f"Kysymys: {request.question[:500]}\nVastaus: {request.answer[:1000]}",
+                    "content": f"Kysymys: {request.question[:500]}\nVastaus: {request.answer[:800]}",
                 },
             ],
-            max_tokens=200,
+            max_tokens=150,
         )
         text = resp.choices[0].message.content or ""
-        suggestions = [s.strip() for s in text.strip().split("\n") if s.strip()][:3]
-        return {"suggestions": suggestions}
+        contextual = [s.strip() for s in text.strip().split("\n") if s.strip()][:2]
     except Exception:
-        return {"suggestions": []}
+        pass
+
+    # Pick 1 random from pool
+    random_picks = []
+    if _random_question_pool:
+        pick = random.choice(_random_question_pool)
+        random_picks = [pick]
+        # Remove used question, refill if running low
+        _random_question_pool.remove(pick)
+
+    suggestions = contextual + random_picks
+    return {"suggestions": suggestions[:3]}
 
 
 DEFAULT_SUGGESTIONS = [
