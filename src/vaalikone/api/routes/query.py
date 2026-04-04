@@ -126,8 +126,11 @@ DEFAULT_SUGGESTIONS = [
 
 @router.get("/suggestions")
 async def get_suggestions(db: AsyncSession = Depends(get_db)):
-    """Return question suggestions — mix of recent queries and defaults."""
+    """Return question suggestions — mix of recent queries, random chunk inspiration, and defaults."""
     import random
+    from vaalikone.models.embedding import Embedding
+    from vaalikone.models.document import Document
+    from vaalikone.models.party import Party
 
     # Get recent unique questions
     result = await db.execute(
@@ -137,17 +140,55 @@ async def get_suggestions(db: AsyncSession = Depends(get_db)):
     )
     recent = list({row[0] for row in result.all()})
 
-    # Build suggestion pool: recent first, fill with defaults
-    pool = recent[:5]
+    # Pick a random chunk and generate a question from it using a cheap model
+    random_question = None
+    try:
+        result = await db.execute(
+            select(Embedding.chunk_text, Document.title, Party.abbreviation)
+            .join(Document, Embedding.document_id == Document.id)
+            .outerjoin(Party, Document.party_id == Party.id)
+            .order_by(func.random())
+            .limit(1)
+        )
+        row = result.first()
+        if row:
+            import os
+            import litellm
+            settings = get_settings()
+            if settings.OPENAI_API_KEY:
+                os.environ.setdefault("OPENAI_API_KEY", settings.OPENAI_API_KEY)
+            resp = await litellm.acompletion(
+                model="gpt-4.1-nano",
+                messages=[{
+                    "role": "user",
+                    "content": (
+                        f"Lue tama teksti puolueelta {row[2] or '?'} ({row[1] or ''}):\n"
+                        f"{row[0][:500]}\n\n"
+                        "Keksi 1 lyhyt, kiinnostava kysymys suomalaisesta politiikasta taman perusteella. "
+                        "Palauta VAIN kysymys, ei muuta."
+                    ),
+                }],
+                max_tokens=60,
+            )
+            q = (resp.choices[0].message.content or "").strip().strip('"')
+            if q and len(q) > 10:
+                random_question = q
+    except Exception:
+        pass
+
+    # Build suggestion pool
+    pool = recent[:3]
+    if random_question and random_question not in pool:
+        pool.insert(0, random_question)
+
     defaults_shuffled = DEFAULT_SUGGESTIONS.copy()
     random.shuffle(defaults_shuffled)
     for d in defaults_shuffled:
         if d not in pool:
             pool.append(d)
-        if len(pool) >= 8:
+        if len(pool) >= 6:
             break
 
-    # If less than 5 recent, randomize the full pool
     if len(recent) < 3:
         random.shuffle(pool)
 
