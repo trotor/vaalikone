@@ -84,3 +84,16 @@ Current models: `text-embedding-3-small` (OpenAI, 1536d), `ollama/bge-m3` (1024d
 ### Source tracking
 
 Every ingested document links back to a `Source` record with URL, title, source_type (website/pdf/api/manual), and party association. Use `vaalikone sources list` to audit provenance. The crawler skips already-indexed URLs via `Source.url` deduplication.
+
+### Known security issues (pre-production)
+
+This is a development/research project. Before any public deployment:
+
+- **No authentication** on API endpoints. `/api/v1/chat` calls OpenAI at owner's cost. Add at minimum API key auth or wire up the scaffolded Keycloak integration.
+- **Model parameter not validated** — user input passed directly to LiteLLM. Add an allowlist in `routes/query.py`.
+- **SSRF risk** in URL connectors (`web.py`, `pdf.py`, `crawler.py`) — no scheme/host validation. Validate URLs before fetching.
+- **ILIKE wildcard injection** in `hybrid_search.py` — escape `%` and `_` in user queries.
+- **Docker ports bound to 0.0.0.0** — bind to `127.0.0.1` for non-public deploys.
+- **Hardcoded credentials** in `docker-compose.yml` — move to env vars/secrets.
+- **No input length limits** on question/query fields — add `max_length` to prevent cost abuse.
+- **Dockerfile runs as root** — add a non-root user.
