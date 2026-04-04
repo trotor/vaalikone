@@ -64,13 +64,18 @@ async def text_search(
         # For ilike-only hits, snippet from ts_headline may be empty/irrelevant
         # We'll fix snippets in a second pass below
 
+        # ILIKE-only hits get relevance 0 from ts_rank — give them a baseline score
+        relevance = float(row.relevance) if row.relevance else 0.0
+        if row.ilike_hit and relevance == 0.0:
+            relevance = 0.01  # small but non-zero so they're not always last
+
         results.append({
             "document_id": str(row.id),
             "title": row.title,
             "content_type": row.content_type.value if row.content_type else None,
             "party": row.party,
             "source_url": row.source_url,
-            "relevance": float(row.relevance) if row.relevance else 0.0,
+            "relevance": relevance,
             "snippet": snippet,
         })
 
