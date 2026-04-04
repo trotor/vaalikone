@@ -474,31 +474,35 @@
             renderMarkdown(answer, data.answer || '');
             container.appendChild(answer);
 
-            // Cost info
-            if (data.cost !== undefined || data.tokens) {
-                const costDiv = document.createElement('div');
-                costDiv.style.cssText = 'font-size:11px; color:#64748b; margin-top:8px; display:flex; gap:12px;';
-                if (data.tokens && data.tokens.total) {
-                    const tokSpan = document.createElement('span');
-                    tokSpan.textContent = data.tokens.total + ' tokenia';
-                    costDiv.appendChild(tokSpan);
-                }
-                if (data.cost && data.cost > 0) {
-                    const costSpan = document.createElement('span');
-                    costSpan.textContent = '$' + data.cost.toFixed(4);
-                    costDiv.appendChild(costSpan);
-                } else if (data.model && data.model.startsWith('ollama/')) {
-                    const freeSpan = document.createElement('span');
-                    freeSpan.textContent = 'ilmainen (lokaali)';
-                    costDiv.appendChild(freeSpan);
-                }
-                if (data.model) {
-                    const modelSpan = document.createElement('span');
-                    modelSpan.textContent = data.model;
-                    costDiv.appendChild(modelSpan);
-                }
-                container.appendChild(costDiv);
+            // Cost & model info bar — always shown
+            const costDiv = document.createElement('div');
+            costDiv.style.cssText = 'font-size:11px; color:#64748b; margin-top:10px; padding-top:8px; border-top:1px solid #1e293b; display:flex; gap:16px; flex-wrap:wrap;';
+            if (data.model) {
+                const modelSpan = document.createElement('span');
+                modelSpan.style.cssText = 'background:#1e293b; padding:2px 8px; border-radius:4px;';
+                modelSpan.textContent = data.model;
+                costDiv.appendChild(modelSpan);
             }
+            if (data.tokens && data.tokens.total) {
+                const tokSpan = document.createElement('span');
+                tokSpan.textContent = data.tokens.total + ' tokenia';
+                costDiv.appendChild(tokSpan);
+            }
+            if (data.cost && data.cost > 0) {
+                const costSpan = document.createElement('span');
+                costSpan.textContent = 'hinta: $' + data.cost.toFixed(4);
+                costDiv.appendChild(costSpan);
+            } else if (data.model && data.model.startsWith('ollama/')) {
+                const freeSpan = document.createElement('span');
+                freeSpan.textContent = 'ilmainen (lokaali)';
+                freeSpan.style.color = '#22c55e';
+                costDiv.appendChild(freeSpan);
+            } else if (data.cost === 0 || data.cost === 0.0) {
+                const unknownSpan = document.createElement('span');
+                unknownSpan.textContent = 'hinta: ei saatavilla';
+                costDiv.appendChild(unknownSpan);
+            }
+            container.appendChild(costDiv);
 
             if (data.sources && data.sources.length > 0) {
                 const sourcesDiv = document.createElement('div');
