@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "vaalikone": {
+      "command": "/Users/teroronkko/.pyenv/versions/3.13.3/bin/python",
+      "args": ["-m", "vaalikone.mcp.server"],
+      "cwd": "/Users/teroronkko/code/vaalikone",
+      "env": {
+        "PYTHONPATH": "/Users/teroronkko/code/vaalikone/src"
+      }
+    }
+  }
+}
