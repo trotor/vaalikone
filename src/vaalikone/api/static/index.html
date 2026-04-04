@@ -250,21 +250,24 @@
         const welcomeEl = document.getElementById('welcome');
         const examplesEl = document.getElementById('examples');
 
-        const EXAMPLES = [
-            'Mita puolueet sanovat metsakeskuksesta?',
-            'Vertaa puolueiden veropolitiikkaa',
-            'Miten puolueet suhtautuvat maahanmuuttoon?',
-            'Mita varjobudjeteissa sanotaan koulutuksesta?',
-            'Mika on liberaalipuolueen kanta ydinvoimaan?',
-        ];
-
-        // Render examples safely
-        EXAMPLES.forEach(q => {
-            const div = document.createElement('div');
-            div.className = 'example';
-            div.textContent = q;
-            div.addEventListener('click', () => { input.value = q; send(); });
-            examplesEl.appendChild(div);
+        // Load suggestions from API (mix of recent queries + defaults)
+        fetch('/api/v1/suggestions').then(r => r.json()).then(data => {
+            (data.suggestions || []).forEach(q => {
+                const div = document.createElement('div');
+                div.className = 'example';
+                div.textContent = q;
+                div.addEventListener('click', () => { input.value = q; send(); });
+                examplesEl.appendChild(div);
+            });
+        }).catch(() => {
+            // Fallback if API fails
+            ['Vertaa puolueiden veropolitiikkaa', 'Mitä puolueet sanovat metsäkeskuksesta?'].forEach(q => {
+                const div = document.createElement('div');
+                div.className = 'example';
+                div.textContent = q;
+                div.addEventListener('click', () => { input.value = q; send(); });
+                examplesEl.appendChild(div);
+            });
         });
 
         let connectivity = { openai: false, ollama: false, internet: false, ollama_models: [] };

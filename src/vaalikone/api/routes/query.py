@@ -3,8 +3,11 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from sqlalchemy import func, select
+
 from vaalikone.api.deps import get_db
 from vaalikone.core.config import get_settings
+from vaalikone.models.query_log import QueryLog
 from vaalikone.query.hybrid_search import text_search
 from vaalikone.query.pipeline import query as run_query
 
@@ -50,6 +53,20 @@ async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db)):
         party_filter=request.party,
         use_semantic=request.use_semantic,
     )
+
+    # Log the query
+    try:
+        log = QueryLog(
+            query_text=request.question,
+            response_text=(result.get("answer") or "")[:2000],
+            model_used=model,
+            tokens_used=result.get("tokens", {}).get("total"),
+        )
+        db.add(log)
+        await db.commit()
+    except Exception:
+        await db.rollback()
+
     return result
 
 
@@ -91,6 +108,50 @@ async def suggest_followups(request: SuggestRequest):
         return {"suggestions": suggestions}
     except Exception:
         return {"suggestions": []}
+
+
+DEFAULT_SUGGESTIONS = [
+    "Mitä puolueet sanovat metsäkeskuksesta?",
+    "Vertaa puolueiden veropolitiikkaa",
+    "Miten puolueet suhtautuvat maahanmuuttoon?",
+    "Mitä varjobudjeteissa sanotaan koulutuksesta?",
+    "Mikä on liberaalipuolueen kanta ydinvoimaan?",
+    "Mitä hallitusohjelmassa sanotaan terveydenhuollosta?",
+    "Miten puolueet suhtautuvat NATO-jäsenyyteen?",
+    "Vertaa oppositiopuolueiden vaihtoehtobudjetteja",
+    "Mitä puolueet sanovat eläkejärjestelmästä?",
+    "Miten puolueet haluavat kehittää perusturvaa?",
+]
+
+
+@router.get("/suggestions")
+async def get_suggestions(db: AsyncSession = Depends(get_db)):
+    """Return question suggestions — mix of recent queries and defaults."""
+    import random
+
+    # Get recent unique questions
+    result = await db.execute(
+        select(QueryLog.query_text)
+        .order_by(QueryLog.created_at.desc())
+        .limit(50)
+    )
+    recent = list({row[0] for row in result.all()})
+
+    # Build suggestion pool: recent first, fill with defaults
+    pool = recent[:5]
+    defaults_shuffled = DEFAULT_SUGGESTIONS.copy()
+    random.shuffle(defaults_shuffled)
+    for d in defaults_shuffled:
+        if d not in pool:
+            pool.append(d)
+        if len(pool) >= 8:
+            break
+
+    # If less than 5 recent, randomize the full pool
+    if len(recent) < 3:
+        random.shuffle(pool)
+
+    return {"suggestions": pool[:5]}
 
 
 @router.get("/connectivity")
