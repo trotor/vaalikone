@@ -2,98 +2,124 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Build & Run Commands
+## Fresh Environment Setup (for AI agents)
+
+Run these commands in order to set up a new development environment:
 
 ```bash
-# Install (editable with dev deps)
+# 1. Install dependencies
+python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
-# Database (must be running for most operations)
+# 2. Start database
 docker compose up -d postgres redis
+sleep 5  # wait for healthy
 
-# Migrations
-alembic upgrade head                              # apply
-alembic revision --autogenerate -m "description"  # create new
+# 3. Configure
+cp .env.example .env
+# Edit .env: add OPENAI_API_KEY if available
 
+# 4. Run migrations
+alembic upgrade head
+
+# 5. Load existing data (if dump exists)
+gunzip -k data/vaalikone-dump.sql.gz
+docker exec -i $(docker ps -qf "name=postgres") psql -U vaalikone < data/vaalikone-dump.sql
+
+# 6. OR seed fresh data
+vaalikone seed parties
+vaalikone ingest representatives
+vaalikone ingest votes --max-pages 50
+vaalikone ingest embed --model ollama/bge-m3
+
+# 7. Install Ollama models (macOS)
+# brew install ollama  # or download from https://ollama.com/download
+ollama pull bge-m3              # embedding (1.2 GB) — required for semantic search
+ollama pull llama3.2:3b         # LLM (2 GB) — lightweight, fast
+ollama pull deepseek-r1:14b     # LLM (9 GB) — reasoning, needs 16+ GB RAM
+
+# 8. Start server
+uvicorn vaalikone.api.app:app --host 0.0.0.0 --port 8003
+```
+
+## Common Commands
+
+```bash
 # Tests (requires running PostgreSQL on port 5435)
-python -m pytest tests/ -v                        # all tests
-python -m pytest tests/test_api.py -v             # single file
-python -m pytest tests/test_api.py::test_health -v  # single test
+python -m pytest tests/ -v
+python -m pytest tests/test_api.py::test_health -v
 
 # Lint
 ruff check src/ tests/
-ruff check --fix src/ tests/
 
-# Run server (must run from project root so .env is found)
+# Migrations
+alembic upgrade head
+alembic revision --autogenerate -m "description"
+
+# Server (must run from project root for .env)
 uvicorn vaalikone.api.app:app --host 0.0.0.0 --port 8003
 
-# CLI
-vaalikone --help
-vaalikone stats                     # database overview
-vaalikone documents                 # documents per party
-vaalikone search "verotus"          # text search
-vaalikone chat "Vertaa puolueiden ilmastopolitiikkaa"  # AI chat
-vaalikone ingest crawl <URL> --party SDP --depth 2     # recursive crawl
-vaalikone ingest embed --model ollama/bge-m3           # generate embeddings
-vaalikone compare-embeddings        # compare embedding model quality
+# Data ingestion
+vaalikone ingest url <URL> --party SDP
+vaalikone ingest pdf <URL> --party PS
+vaalikone ingest crawl <URL> --party VIHR --depth 2 --max-pages 50
+vaalikone ingest embed --model ollama/bge-m3
+
+# Queries
+vaalikone search "verotus"
+vaalikone chat "Vertaa puolueiden ilmastopolitiikkaa"
+vaalikone stats
+vaalikone documents
+vaalikone compare-embeddings
 ```
 
 ## Architecture
 
-RAG (Retrieval-Augmented Generation) system for Finnish political data. Ingests party programs, shadow budgets, parliamentary votes, and MP data, then answers questions via hybrid search (text + semantic) backed by LLM.
+RAG system for Finnish political data. Ingests party programs, shadow budgets, parliamentary votes, and MP data, then answers questions via hybrid search backed by LLM.
 
 ### Data flow
 
 ```
-Ingest: URL/PDF/API/crawl → connectors → chunking → embedding → PostgreSQL+pgvector
-Query:  Question → hybrid search (FTS + ILIKE + vector) → context assembly → LLM → answer with sources
+Ingest: URL/PDF/API/crawl -> connectors -> chunking -> embedding -> PostgreSQL+pgvector
+Query:  Question -> hybrid search (FTS + ILIKE + vector) -> context assembly -> LLM -> answer with sources
 ```
 
 ### Key layers
 
-- **`src/vaalikone/models/`** — SQLAlchemy 2.0 async models. All use `UUIDMixin` from `base.py`. The `Embedding` table uses `pgvector` with flexible dimensions (`Vector()`, no fixed size) to support multiple embedding models simultaneously.
+- **`models/`** — SQLAlchemy 2.0 async. All use `UUIDMixin` from `base.py`. `Embedding` uses `pgvector` with flexible dimensions (`Vector()`) to support multiple embedding models simultaneously.
 
-- **`src/vaalikone/ingest/`** — Data ingestion pipeline. `connectors/` has source-specific fetchers (eduskunta API, web/trafilatura, PDF/PyMuPDF, recursive crawler). `pipeline.py` orchestrates chunk→embed→store with per-document commits and isolated sessions to prevent greenlet errors from cascading. `embedder.py` routes to OpenAI (via LiteLLM) or Ollama (direct httpx calls to `/api/embeddings` — LiteLLM's Ollama embedding integration is broken).
+- **`ingest/`** — Ingestion pipeline. `connectors/` has eduskunta API, web/trafilatura, PDF/PyMuPDF, recursive crawler. `pipeline.py` orchestrates chunk->embed->store with per-document commits and isolated sessions. `embedder.py` routes to OpenAI (via LiteLLM) or Ollama (direct httpx — LiteLLM's Ollama embedding is broken).
 
-- **`src/vaalikone/query/`** — Query pipeline. `hybrid_search.py` combines PostgreSQL FTS (`plainto_tsquery('finnish', ...)`) with an ILIKE fallback for Finnish compound words, plus pgvector cosine similarity filtered by `model_name`. `pipeline.py` merges text results (exact matches first) with semantic results, deduplicates by document_id, then passes to `response.py` for LLM generation.
+- **`query/`** — `hybrid_search.py` combines PostgreSQL FTS (`plainto_tsquery('finnish', ...)`) with ILIKE fallback for compound words, plus pgvector cosine similarity filtered by `model_name`. `pipeline.py` merges text + semantic results, deduplicates, passes to `response.py` for LLM generation. Response includes cost/token tracking.
 
-- **`src/vaalikone/api/`** — FastAPI app. `routes/query.py` has search, chat, and connectivity endpoints. `static/index.html` is a self-contained chat UI that auto-detects available models (OpenAI + Ollama) and falls back to text-only search when offline.
+- **`api/`** — FastAPI app. `routes/query.py` has search, chat, suggest, suggestions, connectivity endpoints. `static/index.html` is self-contained chat UI with auto model detection. All queries logged to `query_log` table.
 
-- **`src/vaalikone/cli/`** — Click CLI registered as `vaalikone` entrypoint. Each file is a command group or standalone command registered in `main.py`.
+- **`cli/`** — Click CLI as `vaalikone` entrypoint. Each file is a command registered in `main.py`.
 
 ### Configuration
 
-All config via `.env` file, loaded by `pydantic-settings` in `core/config.py`. The `OPENAI_API_KEY` is explicitly propagated to `os.environ` in `embedder.py` and `response.py` because LiteLLM doesn't read `.env` files. Server must be started from project root directory for `.env` to be found.
+`.env` loaded by pydantic-settings in `core/config.py`. `OPENAI_API_KEY` is explicitly propagated to `os.environ` in `embedder.py` and `response.py` because LiteLLM doesn't read `.env`.
 
 ### Database
 
-PostgreSQL 16 + pgvector on port **5435** (all ports offset +3 to avoid conflicts: Redis 6382, Keycloak 8083, API 8003). Test database `vaalikone_test` is auto-created by `docker/postgres/init.sql`. Tests use `conftest.py` fixtures that create/drop tables per session.
+PostgreSQL 16 + pgvector on port **5435** (all ports +3: Redis 6382, Keycloak 8083, API 8003). Test DB `vaalikone_test` auto-created by `docker/postgres/init.sql`.
 
-### Multi-model embedding support
+### Multi-model embeddings
 
-Multiple embedding models coexist in the `embeddings` table, differentiated by `model_name` column. The `semantic_search()` function filters by `embed_model` parameter to avoid dimension mismatches. The `Vector()` column has no fixed dimension — when switching to a single model, you can add a dimension constraint for performance: `ALTER TABLE embeddings ALTER COLUMN embedding TYPE vector(N)`.
+Multiple models coexist via `model_name` column. `semantic_search()` filters by `embed_model`. Best model for Finnish: `ollama/bge-m3` (benchmark: 0.578 avg, 12/15 wins, 11/16 parties found).
 
-Current models: `text-embedding-3-small` (OpenAI, 1536d), `ollama/bge-m3` (1024d), `ollama/zembed-1` (2560d). Use `vaalikone compare-embeddings` to evaluate quality.
+### Finnish language gotchas
 
-### Finnish language considerations
-
-- PostgreSQL FTS uses `'finnish'` dictionary but fails on compound words (e.g., "Metsäkeskuslain" when searching "metsäkeskus"). The ILIKE fallback in `hybrid_search.py` catches these.
-- Embedding model quality for Finnish varies significantly. OpenAI `text-embedding-3-small` and local `bge-m3` work well. `nomic-embed-text` has weak Finnish support.
-- The recursive crawler (`connectors/crawler.py`) uses Finnish political keyword heuristics to filter relevant content, with optional LLM-based relevance check via Ollama.
-
-### Source tracking
-
-Every ingested document links back to a `Source` record with URL, title, source_type (website/pdf/api/manual), and party association. Use `vaalikone sources list` to audit provenance. The crawler skips already-indexed URLs via `Source.url` deduplication.
+- FTS misses compound words ("Metsäkeskuslain" vs "metsäkeskus"). ILIKE fallback catches these. ILIKE-only hits get baseline relevance 0.01.
+- bge-m3 is best for Finnish embeddings. nomic-embed-text is weak for Finnish.
+- Crawler uses Finnish political keyword heuristics with optional LLM relevance check.
 
 ### Known security issues (pre-production)
 
-This is a development/research project. Before any public deployment:
-
-- **No authentication** on API endpoints. `/api/v1/chat` calls OpenAI at owner's cost. Add at minimum API key auth or wire up the scaffolded Keycloak integration.
-- **Model parameter not validated** — user input passed directly to LiteLLM. Add an allowlist in `routes/query.py`.
-- **SSRF risk** in URL connectors (`web.py`, `pdf.py`, `crawler.py`) — no scheme/host validation. Validate URLs before fetching.
-- **ILIKE wildcard injection** in `hybrid_search.py` — escape `%` and `_` in user queries.
-- **Docker ports bound to 0.0.0.0** — bind to `127.0.0.1` for non-public deploys.
-- **Hardcoded credentials** in `docker-compose.yml` — move to env vars/secrets.
-- **No input length limits** on question/query fields — add `max_length` to prevent cost abuse.
-- **Dockerfile runs as root** — add a non-root user.
+- No authentication on API. Add API key auth or Keycloak before public deployment.
+- Model parameter not validated — add allowlist in `routes/query.py`.
+- SSRF risk in URL connectors — validate URLs before fetching.
+- ILIKE wildcard injection — escape `%` and `_` in queries.
+- Docker ports bound to 0.0.0.0 — bind to 127.0.0.1 for non-public.
+- Hardcoded DB credentials in docker-compose.yml.
+- Dockerfile runs as root.
