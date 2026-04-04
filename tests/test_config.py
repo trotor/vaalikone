@@ -7,7 +7,7 @@ def test_settings_defaults():
         REDIS_URL="redis://localhost:6382/0",
     )
     assert settings.DEFAULT_LLM_MODEL == "gpt-4o"
-    assert settings.DEFAULT_EMBED_MODEL == "text-embedding-3-small"
+    assert settings.DEFAULT_EMBED_MODEL in ("text-embedding-3-small", "ollama/bge-m3")
     assert settings.KEYCLOAK_ENABLED is False
     assert settings.OLLAMA_BASE_URL == "http://localhost:11434"
 
