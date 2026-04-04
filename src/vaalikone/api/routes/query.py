@@ -53,6 +53,46 @@ async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db)):
     return result
 
 
+class SuggestRequest(BaseModel):
+    question: str
+    answer: str
+
+
+@router.post("/suggest")
+async def suggest_followups(request: SuggestRequest):
+    """Generate follow-up question suggestions using a cheap model."""
+    import os
+    import litellm
+    settings = get_settings()
+    if settings.OPENAI_API_KEY:
+        os.environ.setdefault("OPENAI_API_KEY", settings.OPENAI_API_KEY)
+
+    try:
+        resp = await litellm.acompletion(
+            model="gpt-4.1-nano",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Generoi 3 lyhyttä jatkokysymystä suomalaisesta politiikasta edellisen "
+                        "kysymyksen ja vastauksen perusteella. Palauta VAIN 3 kysymystä, yksi per rivi, "
+                        "ilman numerointia tai muuta muotoilua. Suomeksi."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": f"Kysymys: {request.question[:500]}\nVastaus: {request.answer[:1000]}",
+                },
+            ],
+            max_tokens=200,
+        )
+        text = resp.choices[0].message.content or ""
+        suggestions = [s.strip() for s in text.strip().split("\n") if s.strip()][:3]
+        return {"suggestions": suggestions}
+    except Exception:
+        return {"suggestions": []}
+
+
 @router.get("/connectivity")
 async def check_connectivity():
     """Check which services are available: OpenAI, Ollama, internet."""

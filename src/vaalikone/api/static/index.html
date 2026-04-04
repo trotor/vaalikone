@@ -70,9 +70,14 @@
             padding: 16px 20px;
         }
         .message.assistant .answer {
-            line-height: 1.6;
-            white-space: pre-wrap;
+            line-height: 1.7;
         }
+        .answer p { margin-bottom: 8px; }
+        .answer ul, .answer ol { margin: 6px 0 6px 20px; }
+        .answer li { margin-bottom: 4px; }
+        .answer strong { color: #f1f5f9; }
+        .answer h3, .answer h4 { color: #f1f5f9; margin: 12px 0 6px 0; font-size: 15px; }
+        .answer hr { border: none; border-top: 1px solid #334155; margin: 10px 0; }
         .sources {
             margin-top: 12px;
             padding-top: 12px;
@@ -353,6 +358,87 @@
 
         sendBtn.addEventListener('click', send);
 
+        function renderMarkdown(container, text) {
+            // Safe markdown rendering via DOM manipulation (no innerHTML)
+            const lines = text.split('\n');
+            let currentList = null;
+            let currentListType = null;
+
+            function addInlineFormatting(parent, text) {
+                // Bold: **text** or __text__
+                const parts = text.split(/(\*\*[^*]+\*\*|__[^_]+__)/g);
+                parts.forEach(part => {
+                    if ((part.startsWith('**') && part.endsWith('**')) || (part.startsWith('__') && part.endsWith('__'))) {
+                        const strong = document.createElement('strong');
+                        strong.textContent = part.slice(2, -2);
+                        parent.appendChild(strong);
+                    } else {
+                        parent.appendChild(document.createTextNode(part));
+                    }
+                });
+            }
+
+            function closePendingList() {
+                if (currentList) { container.appendChild(currentList); currentList = null; currentListType = null; }
+            }
+
+            lines.forEach(line => {
+                const trimmed = line.trim();
+
+                // Empty line
+                if (!trimmed) { closePendingList(); return; }
+
+                // Headings
+                if (trimmed.startsWith('### ')) {
+                    closePendingList();
+                    const h = document.createElement('h4');
+                    addInlineFormatting(h, trimmed.slice(4));
+                    container.appendChild(h);
+                    return;
+                }
+                if (trimmed.startsWith('## ')) {
+                    closePendingList();
+                    const h = document.createElement('h3');
+                    addInlineFormatting(h, trimmed.slice(3));
+                    container.appendChild(h);
+                    return;
+                }
+
+                // Horizontal rule
+                if (trimmed === '---' || trimmed === '***') {
+                    closePendingList();
+                    container.appendChild(document.createElement('hr'));
+                    return;
+                }
+
+                // Unordered list
+                if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+                    if (currentListType !== 'ul') { closePendingList(); currentList = document.createElement('ul'); currentListType = 'ul'; }
+                    const li = document.createElement('li');
+                    addInlineFormatting(li, trimmed.slice(2));
+                    currentList.appendChild(li);
+                    return;
+                }
+
+                // Ordered list
+                const olMatch = trimmed.match(/^(\d+)\.\s(.+)/);
+                if (olMatch) {
+                    if (currentListType !== 'ol') { closePendingList(); currentList = document.createElement('ol'); currentListType = 'ol'; }
+                    const li = document.createElement('li');
+                    addInlineFormatting(li, olMatch[2]);
+                    currentList.appendChild(li);
+                    return;
+                }
+
+                // Paragraph
+                closePendingList();
+                const p = document.createElement('p');
+                addInlineFormatting(p, trimmed);
+                container.appendChild(p);
+            });
+            closePendingList();
+        }
+
         function createUserMessage(text) {
             const div = document.createElement('div');
             div.className = 'message user';
@@ -385,7 +471,7 @@
 
             const answer = document.createElement('div');
             answer.className = 'answer';
-            answer.textContent = data.answer;
+            renderMarkdown(answer, data.answer || '');
             container.appendChild(answer);
 
             // Cost info
@@ -448,6 +534,41 @@
                 });
                 container.appendChild(sourcesDiv);
             }
+
+            // Fetch follow-up suggestions
+            if (data.answer && data.answer.length > 50) {
+                fetchSuggestions(container, data);
+            }
+        }
+
+        async function fetchSuggestions(container, data) {
+            try {
+                const resp = await fetch('/api/v1/suggest', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        question: data._question || '',
+                        answer: (data.answer || '').substring(0, 1000),
+                    }),
+                });
+                const result = await resp.json();
+                if (result.suggestions && result.suggestions.length > 0) {
+                    const sugDiv = document.createElement('div');
+                    sugDiv.style.cssText = 'margin-top:12px; display:flex; flex-wrap:wrap; gap:6px;';
+                    result.suggestions.forEach(s => {
+                        const btn = document.createElement('button');
+                        btn.textContent = s;
+                        btn.style.cssText = 'background:#1e3a5f; color:#93c5fd; border:1px solid #2563eb; border-radius:16px; padding:6px 14px; font-size:13px; cursor:pointer; transition:background 0.2s;';
+                        btn.addEventListener('mouseenter', () => { btn.style.background = '#1e40af'; });
+                        btn.addEventListener('mouseleave', () => { btn.style.background = '#1e3a5f'; });
+                        btn.addEventListener('click', () => { input.value = s; send(); });
+                        sugDiv.appendChild(btn);
+                    });
+                    container.appendChild(sugDiv);
+                }
+            } catch (e) {
+                // Silently fail — suggestions are optional
+            }
         }
 
         function showError(container, message) {
@@ -507,6 +628,7 @@
                         body: JSON.stringify({ question: question, party: party, model: model, use_semantic: useSemantic }),
                     });
                     const data = await resp.json();
+                    data._question = question;
                     populateAssistantMessage(loadingMsg, data);
                 }
             } catch (err) {
