@@ -53,7 +53,7 @@ async def query(
         }
 
     # Generate response
-    answer = await generate_response(question, results, model=model)
+    llm_result = await generate_response(question, results, model=model)
 
     # Deduplicate sources with URLs
     seen = set()
@@ -69,7 +69,9 @@ async def query(
             })
 
     return {
-        "answer": answer,
+        "answer": llm_result["text"],
         "sources": sources,
         "model": model,
+        "cost": llm_result["cost"],
+        "tokens": llm_result["tokens"],
     }

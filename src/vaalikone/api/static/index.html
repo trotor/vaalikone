@@ -388,6 +388,32 @@
             answer.textContent = data.answer;
             container.appendChild(answer);
 
+            // Cost info
+            if (data.cost !== undefined || data.tokens) {
+                const costDiv = document.createElement('div');
+                costDiv.style.cssText = 'font-size:11px; color:#64748b; margin-top:8px; display:flex; gap:12px;';
+                if (data.tokens && data.tokens.total) {
+                    const tokSpan = document.createElement('span');
+                    tokSpan.textContent = data.tokens.total + ' tokenia';
+                    costDiv.appendChild(tokSpan);
+                }
+                if (data.cost && data.cost > 0) {
+                    const costSpan = document.createElement('span');
+                    costSpan.textContent = '$' + data.cost.toFixed(4);
+                    costDiv.appendChild(costSpan);
+                } else if (data.model && data.model.startsWith('ollama/')) {
+                    const freeSpan = document.createElement('span');
+                    freeSpan.textContent = 'ilmainen (lokaali)';
+                    costDiv.appendChild(freeSpan);
+                }
+                if (data.model) {
+                    const modelSpan = document.createElement('span');
+                    modelSpan.textContent = data.model;
+                    costDiv.appendChild(modelSpan);
+                }
+                container.appendChild(costDiv);
+            }
+
             if (data.sources && data.sources.length > 0) {
                 const sourcesDiv = document.createElement('div');
                 sourcesDiv.className = 'sources';
