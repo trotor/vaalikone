@@ -96,7 +96,10 @@ async def process_all_documents(
                 processed += 1
                 click.echo(f"  [{processed}/{len(documents)}] {title}: {n} chunks")
         except Exception as e:
-            click.echo(f"  [{processed + 1}/{len(documents)}] {title}: ERROR - {type(e).__name__}: {e}")
+            click.echo(
+                f"  [{processed + 1}/{len(documents)}] {title}: "
+                f"ERROR - {type(e).__name__}: {e}"
+            )
             processed += 1
 
     await engine.dispose()

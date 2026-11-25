@@ -18,7 +18,8 @@ async def generate_response(
     Returns {"text": str, "cost": float, "tokens": dict}."""
 
     context_text = "\n\n".join(
-        f"[{c.get('party', '?')}] {c.get('title', 'Untitled')}:\n{c.get('snippet') or c.get('chunk_text', '')}"
+        f"[{c.get('party', '?')}] {c.get('title', 'Untitled')}:\n"
+        f"{c.get('snippet') or c.get('chunk_text', '')}"
         for c in context
     )
 
@@ -60,3 +61,42 @@ async def generate_response(
             "total": total_tokens,
         },
     }
+
+
+def _build_messages(question: str, context: list[dict]) -> list[dict]:
+    context_text = "\n\n".join(
+        f"[{c.get('party', '?')}] {c.get('title', 'Untitled')}:\n"
+        f"{c.get('snippet') or c.get('chunk_text', '')}"
+        for c in context
+    )
+    return [
+        {
+            "role": "system",
+            "content": (
+                "Olet suomalaisen politiikan asiantuntija. Vastaa käyttäjän kysymyksiin "
+                "annetun kontekstin perusteella. Viittaa aina lähteisiin (puolue ja dokumentti). "
+                "Jos kontekstista ei löydy vastausta, kerro se rehellisesti. Vastaa suomeksi."
+            ),
+        },
+        {
+            "role": "user",
+            "content": f"Konteksti:\n{context_text}\n\nKysymys: {question}",
+        },
+    ]
+
+
+async def stream_response(question: str, context: list[dict], model: str = "gpt-4o"):
+    """Stream an LLM response chunk by chunk.
+
+    Yields dicts: {"type": "chunk", "text": str} ... then a final
+    {"type": "done", "sources": [...]} event.
+    """
+    messages = _build_messages(question, context)
+    full_text = ""
+    stream = await litellm.acompletion(model=model, messages=messages, stream=True)
+    async for chunk in stream:
+        delta = chunk.choices[0].delta.content if chunk.choices else None
+        if delta:
+            full_text += delta
+            yield {"type": "chunk", "text": delta}
+    yield {"type": "done", "answer": full_text, "model": model}

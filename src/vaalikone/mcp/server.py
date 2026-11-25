@@ -16,9 +16,7 @@ Usage:
     }
 """
 
-import asyncio
 import os
-from contextlib import asynccontextmanager
 
 from fastmcp import FastMCP
 from sqlalchemy import func, select
@@ -27,6 +25,16 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 # Load config
 from vaalikone.core.config import get_settings
 
+# Models
+from vaalikone.models.candidate import Candidate
+from vaalikone.models.document import Document
+from vaalikone.models.election import Election
+from vaalikone.models.embedding import Embedding
+from vaalikone.models.party import Party
+from vaalikone.models.representative import Representative
+from vaalikone.models.source import Source
+from vaalikone.models.vote import Vote
+
 settings = get_settings()
 if settings.OPENAI_API_KEY:
     os.environ.setdefault("OPENAI_API_KEY", settings.OPENAI_API_KEY)
@@ -34,14 +42,6 @@ if settings.OPENAI_API_KEY:
 # Database setup
 engine = create_async_engine(settings.DATABASE_URL)
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-
-# Models
-from vaalikone.models.party import Party
-from vaalikone.models.representative import Representative
-from vaalikone.models.source import Source
-from vaalikone.models.document import Document
-from vaalikone.models.embedding import Embedding
-from vaalikone.models.vote import Vote
 
 mcp = FastMCP(
     "Vaalikone",
@@ -231,9 +231,9 @@ async def ingest_url(
         url: Web-sivun tai PDF:n URL
         party: Puolueen lyhenne (esim. "SDP")
     """
-    from vaalikone.ingest.connectors.web import fetch_and_extract
     from vaalikone.ingest.connectors.pdf import fetch_and_extract_pdf
-    from vaalikone.models.source import SourceType, SourceStatus
+    from vaalikone.ingest.connectors.web import fetch_and_extract
+    from vaalikone.models.source import SourceStatus, SourceType
 
     # Detect PDF
     if url.lower().endswith(".pdf"):
@@ -306,6 +306,132 @@ async def list_documents(party: str | None = None) -> str:
     for abbr, name, count, chars in rows:
         lines.append(f"{abbr:<8} {name[:44]:<45} {count:>5} {chars or 0:>12,}")
 
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def search_votes(
+    representative: str | None = None,
+    subject_contains: str | None = None,
+    limit: int = 20,
+) -> str:
+    """Hae kansanedustajien äänestyksiä (sis. äänestyksen otsikon subject_title).
+
+    Args:
+        representative: Kansanedustajan nimi (esim. "Marin")
+        subject_contains: Hae äänestyksen otsikosta (esim. "Nato")
+        limit: Montako tulosta (max 100)
+    """
+    async with async_session() as session:
+        stmt = (
+            select(
+                Representative.first_name,
+                Representative.last_name,
+                Party.abbreviation,
+                Vote.session,
+                Vote.subject_title,
+                Vote.vote,
+            )
+            .join(Representative, Vote.representative_id == Representative.id)
+            .outerjoin(Party, Representative.party_id == Party.id)
+        )
+        if representative:
+            stmt = stmt.where(
+                (Representative.first_name + " " + Representative.last_name).ilike(
+                    f"%{representative}%"
+                )
+            )
+        if subject_contains:
+            from vaalikone.query.hybrid_search import escape_ilike
+
+            stmt = stmt.where(
+                Vote.subject_title.ilike(f"%{escape_ilike(subject_contains)}%", escape="\\")
+            )
+        stmt = stmt.order_by(Vote.session.desc().nullslast()).limit(min(limit, 100))
+        result = await session.execute(stmt)
+        rows = result.all()
+
+    if not rows:
+        return "Ei äänestyksiä hakuehdoilla."
+    lines = [f"{'Kansanedustaja':<25} {'Puolue':<7} {'Istunto':<8} {'Äänestys':<8} Otsikko"]
+    lines.append("-" * 100)
+    for fn, ln, party, sess, title, vote in rows:
+        name = f"{fn} {ln}"[:24]
+        lines.append(
+            f"{name:<25} {(party or '?'):<7} {(sess or ''):<8} "
+            f"{vote.value:<8} {(title or '')[:60]}"
+        )
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def list_candidates(
+    year: int = 2023,
+    party: str | None = None,
+    elected_only: bool = False,
+    q: str | None = None,
+    limit: int = 30,
+) -> str:
+    """Listaa vaalien ehdokkaat Tilastokeskus-datasta (äänimäärät, valintatieto, vaalipiiri).
+
+    Args:
+        year: Vaalivuosi (esim. 2023)
+        party: Rajaa puolueeseen (esim. "SDP")
+        elected_only: Vain valitut
+        q: Hae ehdokkaan nimellä
+        limit: Montako tulosta (max 200)
+    """
+    async with async_session() as session:
+        election = await session.execute(
+            select(Election).where(Election.year == year)
+        )
+        election = election.scalar_one_or_none()
+        if not election:
+            return (
+                f"Ei vaalia vuodelle {year} tietokannassa. "
+                f"Aja ensin: vaalikone ingest candidates --year {year}"
+            )
+
+        stmt = (
+            select(
+                Candidate.candidate_number,
+                Candidate.first_name,
+                Candidate.last_name,
+                Party.abbreviation,
+                Candidate.constituency,
+                Candidate.votes,
+                Candidate.elected,
+            )
+            .outerjoin(Party, Candidate.party_id == Party.id)
+            .where(Candidate.election_id == election.id)
+        )
+        if party:
+            stmt = stmt.where(Party.abbreviation == party.upper())
+        if elected_only:
+            stmt = stmt.where(Candidate.elected.is_(True))
+        if q:
+            from vaalikone.query.hybrid_search import escape_ilike
+
+            stmt = stmt.where(
+                (Candidate.first_name + " " + Candidate.last_name).ilike(
+                    f"%{escape_ilike(q)}%", escape="\\"
+                )
+            )
+        stmt = stmt.order_by(Candidate.votes.desc().nullslast()).limit(min(limit, 200))
+        result = await session.execute(stmt)
+        rows = result.all()
+
+    if not rows:
+        return "Ei ehdokkaita hakuehdoilla."
+    lines = [f"Ehdokkaat {election.name}" + (f" / {party}" if party else "")]
+    lines.append(f"{'Nro':<9} {'Nimi':<28} {'Puolue':<7} {'Vaalipiiri':<28} {'Äänet':>8}  Valittu")
+    lines.append("-" * 95)
+    for num, fn, ln, party, const, votes, elected in rows:
+        name = f"{fn} {ln}"[:27]
+        lines.append(
+            f"{(num or ''):<9} {name:<28} {(party or '?'):<7} {(const or '')[:27]:<28} "
+            f"{(votes or 0):>8,}  {'kyllä' if elected else 'ei'}"
+        )
     return "\n".join(lines)
 
 

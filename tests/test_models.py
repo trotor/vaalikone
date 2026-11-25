@@ -1,11 +1,10 @@
-import uuid
 
 from sqlalchemy import select
 
+from vaalikone.models.document import ContentType, Document
 from vaalikone.models.party import Party
 from vaalikone.models.representative import Representative
-from vaalikone.models.source import Source, SourceType, SourceStatus
-from vaalikone.models.document import Document, ContentType
+from vaalikone.models.source import Source, SourceStatus, SourceType
 from vaalikone.models.vote import Vote, VoteChoice
 
 

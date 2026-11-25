@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import Text, Integer, ForeignKey
+from sqlalchemy import ForeignKey, Integer, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -10,7 +10,11 @@ from vaalikone.models.base import Base, UUIDMixin
 class Representative(UUIDMixin, Base):
     __tablename__ = "representatives"
 
-    party_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("parties.id"), nullable=True)
+    party_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("parties.id"), nullable=True
+    )
+    # Eduskunnan avoimen datan henkilonumero (MemberOfParliament.personId) — stable id for dedup
+    person_id: Mapped[str | None] = mapped_column(Text, unique=True)
     first_name: Mapped[str] = mapped_column(Text, nullable=False)
     last_name: Mapped[str] = mapped_column(Text, nullable=False)
     constituency: Mapped[str | None] = mapped_column(Text)

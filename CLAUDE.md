@@ -64,6 +64,17 @@ vaalikone ingest url <URL> --party SDP
 vaalikone ingest pdf <URL> --party PS
 vaalikone ingest crawl <URL> --party VIHR --depth 2 --max-pages 50
 vaalikone ingest embed --model ollama/bge-m3
+vaalikone ingest representatives            # kansanedustajat (dedup person_id:llä)
+vaalikone ingest votes --max-pages 100      # äänestykset otsikoilla
+vaalikone ingest vote-subjects              # äänestysotsikot olemassaoleville
+vaalikone ingest speeches ilmastonmuutos --max-results 100   # täysistuntopuheet (api.eduskunta.fi)
+vaalikone ingest questions --max-results 100                 # kirjalliset kysymykset (KK)
+vaalikone ingest candidates --year 2023    # ehdokkaat Tilastokeskuksesta
+vaalikone ingest programs                  # vaaliohjelmat + varjobudjetit kaikilta puolueilta (config/sources.yaml)
+# Kaikki yllä --queue:lla taustatöiksi Celeryyn (docker compose up worker)
+
+# Worker
+celery -A vaalikone.workers.tasks worker --loglevel=info
 
 # Queries
 vaalikone search "verotus"
@@ -102,7 +113,12 @@ Query:  Question -> hybrid search (FTS + ILIKE + vector) -> context assembly -> 
 
 ### Database
 
-PostgreSQL 16 + pgvector on port **5435** (all ports +3: Redis 6382, Keycloak 8083, API 8003). Test DB `vaalikone_test` auto-created by `docker/postgres/init.sql`.
+PostgreSQL 16 + pgvector + pg_trgm on port **5435** (all ports +3: Redis 6382, Keycloak 8083, API 8003). Test DB `vaalikone_test` auto-created by `docker/postgres/init.sql`. Alembic reads `DATABASE_URL` env override. Newer schema: `votes.subject_title`, `representatives.person_id` (unique), `elections` + `candidates` tables, trigram index on `documents.content_text`, unique (representative_id, subject) on votes.
+
+### New data sources (2026-11)
+
+- `api.eduskunta.fi` (new search API): `ingest speeches` (category puheenvuoro, full text), `ingest questions` (KK via expression `eduskuntatunnus:KK`, XML body via `/valtiopaivaasiat/{tunnus}/xml`). Old `avoindata.eduskunta.fi` table API moves to the new service in 2027 — override with `EDUSKUNTA_API_URL` / `EDUSKUNTA_SEARCH_URL`.
+- Tilastokeskus PxWeb `StatFin/evaa/13t3.px`: candidate votes 2023 (`ingest connectors/tilastokeskus.py`).
 
 ### Multi-model embeddings
 
@@ -114,12 +130,16 @@ Multiple models coexist via `model_name` column. `semantic_search()` filters by 
 - bge-m3 is best for Finnish embeddings. nomic-embed-text is weak for Finnish.
 - Crawler uses Finnish political keyword heuristics with optional LLM relevance check.
 
-### Known security issues (pre-production)
+### Security (implemented)
 
-- No authentication on API. Add API key auth or Keycloak before public deployment.
-- Model parameter not validated — add allowlist in `routes/query.py`.
-- SSRF risk in URL connectors — validate URLs before fetching.
-- ILIKE wildcard injection — escape `%` and `_` in queries.
-- Docker ports bound to 0.0.0.0 — bind to 127.0.0.1 for non-public.
-- Hardcoded DB credentials in docker-compose.yml.
-- Dockerfile runs as root.
+- API key auth: set `VAALIKONE_API_KEY`, then all `/api/v1/*` require `X-API-Key` header (`api/deps.py:verify_api_key`). `/` and `/health` stay open.
+- Chat model allowlist: `CHAT_ALLOWED_MODELS` env (comma-separated); `__text_only__` always allowed (`routes/query.py:_check_model_allowed`).
+- SSRF guard: `ingest/url_validation.py:validate_public_url` blocks non-http(s), localhost, private/loopback/link-local IPs (incl. DNS resolution); wired into web/pdf/crawler connectors.
+- ILIKE wildcards escaped in `query/hybrid_search.py:escape_ilike`.
+- Docker ports bound to 127.0.0.1, passwords via env vars, Dockerfile runs as non-root `app` user.
+
+### Still open (pre-production)
+
+- Keycloak for real user auth (dev profile in docker-compose).
+- Rate limiting on the API.
+- Rotate the OpenAI key that was committed in a local `.env` earlier if it was ever pushed anywhere.

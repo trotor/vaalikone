@@ -1,13 +1,13 @@
 import click
 
-from vaalikone.cli.seed import seed
+from vaalikone.cli.chat import chat
+from vaalikone.cli.compare_embeddings import compare_embeddings
+from vaalikone.cli.documents import documents
 from vaalikone.cli.ingest import ingest
+from vaalikone.cli.search import search
+from vaalikone.cli.seed import seed
 from vaalikone.cli.sources import sources
 from vaalikone.cli.stats import stats
-from vaalikone.cli.search import search
-from vaalikone.cli.chat import chat
-from vaalikone.cli.documents import documents
-from vaalikone.cli.compare_embeddings import compare_embeddings
 
 
 @click.group()

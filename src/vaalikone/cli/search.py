@@ -24,7 +24,7 @@ async def _search(query_text: str, party: str | None, limit: int):
             click.echo(f"\n{'='*60}")
             click.echo(f"#{i} [{r['party'] or '?'}] {r['title']}")
             click.echo(f"Tyyppi: {r['content_type'] or '-'}  |  Relevanssi: {r['relevance']:.4f}")
-            click.echo(f"-"*60)
+            click.echo("-"*60)
             # Clean up snippet HTML
             snippet = r['snippet'].replace('<b>', '**').replace('</b>', '**')
             click.echo(snippet)

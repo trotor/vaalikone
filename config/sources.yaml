@@ -1,0 +1,151 @@
+# Puolueiden viralliset dokumentit: vaaliohjelmat, puolueohjelmat ja varjobudjetit.
+# Käytä: vaalikone ingest programs            (kaikki)
+#       vaalikone ingest programs --party SDP  (vain yksi puolue)
+#       vaalikone ingest programs --kind varjobudjetti
+# type: pdf = lataa PDF, web = yksittäinen sivu, crawl = sivuston läpikäynti
+sources:
+  # --- Vaaliohjelmat eduskuntavaaleissa 2023 ---
+  - party: SDP
+    kind: vaaliohjelma
+    type: pdf
+    url: "https://www.sdp.fi/uploads/sites/2/2023/02/rohkeutta-olla-sinun-puolellasi-sdpn-eduskuntavaaliohjelma-2023.pdf"
+    title: "SDP:n eduskuntavaaliohjelma 2023"
+  - party: KOK
+    kind: vaaliohjelma
+    type: pdf
+    url: "https://www.kokoomus.fi/wp-content/uploads/2023/02/vaaliohjelma_2023_11.pdf"
+    title: "Kokoomuksen eduskuntavaaliohjelma 2023"
+  - party: PS
+    kind: vaaliohjelma
+    type: web
+    url: "https://www.perussuomalaiset.fi/tietoa-meista/puolueohjelma/"
+    title: "Perussuomalaisten puolueohjelma"
+  - party: PS
+    kind: vaaliohjelma
+    type: pdf
+    url: "https://www.perussuomalaiset.fi/wp-content/uploads/2023/01/TalousOhjelmaIso_final-01_2023.pdf"
+    title: "Perussuomalaisten talouspoliittinen ohjelma 2023"
+  - party: KESK
+    kind: vaaliohjelma
+    type: pdf
+    url: "https://keskusta.fi/wp-content/uploads/2023/01/Keskustan-eduskuntavaaliohjelma-2023.pdf"
+    title: "Keskustan eduskuntavaaliohjelma 2023"
+  - party: VIHR
+    kind: vaaliohjelma
+    type: pdf
+    url: "https://www.vihreat.fi/wp-content/uploads/2023/02/Vihrea%CC%88t_eduskuntavaaliohjelma_2023_final.pdf"
+    title: "Vihreiden eduskuntavaaliohjelma 2023"
+  - party: VIHR
+    kind: puolueohjelma
+    type: pdf
+    url: "https://www.vihreat.fi/wp-content/uploads/2022/08/Vihreiden-poliittinen-tavoiteohjelma-2023%E2%80%932027-2.pdf"
+    title: "Vihreiden poliittinen tavoiteohjelma 2023–2027"
+  - party: VAS
+    kind: vaaliohjelma
+    type: crawl
+    url: "https://vasemmisto.fi/ohjelmat/"
+    title: "Vasemmistoliiton ohjelmat"
+    depth: 1
+    max_pages: 20
+  - party: RKP
+    kind: vaaliohjelma
+    type: pdf
+    url: "https://sfp.fi/wp-content/uploads/2024/01/RKP-Vaaliohjelma-2023.pdf"
+    title: "RKP:s valprogram 2023"
+    language: sv
+  - party: KD
+    kind: vaaliohjelma
+    type: pdf
+    url: "https://www.kdpuolue.fi/kd/files/2023/01/KD-vaaliohjelma-WEB-2023.pdf"
+    title: "KD:n vaaliohjelma 2023"
+  - party: KD
+    kind: vaaliohjelma
+    type: web
+    url: "https://www.kd.fi/tutustu/ohjelmat/eduskuntavaaliohjelma-2023/"
+    title: "KD:n eduskuntavaaliohjelma 2023"
+  - party: LIIK
+    kind: vaaliohjelma
+    type: crawl
+    url: "https://www.liikenyt.fi/"
+    title: "Liike Nyt -sivusto"
+    depth: 1
+    max_pages: 20
+
+  # --- Pienpuolueiden puolueohjelmat ---
+  - party: PIR
+    kind: puolueohjelma
+    type: web
+    url: "https://www.piraattipuolue.fi/politiikka/puolueohjelma/"
+    title: "Piraattipuolueen puolueohjelma"
+  - party: EOP
+    kind: puolueohjelma
+    type: web
+    url: "https://www.eop.fi/puolueohjelmat"
+    title: "Eläinoikeuspuolueen puolueohjelmat"
+  - party: LIB
+    kind: puolueohjelma
+    type: web
+    url: "https://www.liberaalipuolue.fi/puolueohjelma/"
+    title: "Liberaalipuolueen puolueohjelma"
+  - party: SKP
+    kind: puolueohjelma
+    type: pdf
+    url: "https://skp.fi/wp-content/uploads/asiakirjat/SKP-puolueohjelma.pdf"
+    title: "SKP:n puolueohjelma"
+  - party: SML
+    kind: puolueohjelma
+    type: pdf
+    url: "https://sinimustaliike.fi/wp-content/uploads/2024/05/yleisohjelma.pdf"
+    title: "Sinimustan liikkeen yleisohjelma"
+  - party: FP
+    kind: puolueohjelma
+    type: crawl
+    url: "https://www.feministinenpuolue.fi/"
+    title: "Feministisen puolueen sivusto"
+    depth: 1
+    max_pages: 10
+  - party: VKK
+    kind: puolueohjelma
+    type: crawl
+    url: "https://www.valtakuuluukansalle.fi/"
+    title: "Valta kuuluu kansalle -sivusto"
+    depth: 2
+    max_pages: 20
+
+  # --- Varjobudjetit (vaihtoehtobudjetit) 2026 ---
+  - party: SDP
+    kind: varjobudjetti
+    type: pdf
+    url: "https://www.sdp.fi/app/uploads/sites/2/2025/11/sdp-vaihtoehtobudjetti-2026-2-web.pdf"
+    title: "SDP:n vaihtoehtobudjetti 2026"
+  - party: VIHR
+    kind: varjobudjetti
+    type: pdf
+    url: "https://www.vihreat.fi/wp-content/uploads/2025/11/Vihreat_Vaihtoehtobudjetti_2026_Master_WEBFINAL.pdf"
+    title: "Vihreiden vaihtoehtobudjetti 2026"
+  - party: KESK
+    kind: varjobudjetti
+    type: pdf
+    url: "https://keskusta.fi/wp-content/uploads/2025/11/Keskusta-Parempi-vaihtoehto-uusi-suunta-Suomelle-2025.pdf"
+    title: "Keskustan vaihtoehtobudjetti 2026"
+  - party: VAS
+    kind: varjobudjetti
+    type: web
+    url: "https://vasemmisto.fi/ohjelmat/vasemmistoliiton-vaihtoehtobudjetti-2026/"
+    title: "Vasemmistoliiton vaihtoehtobudjetti 2026"
+  - party: KOK
+    kind: varjobudjetti
+    type: web
+    url: "https://www.kokoomus.fi/kestavan-tulevaisuuden-vaihtoehto/"
+    title: "Kokoomuksen vaihtoehtobudjetti"
+  - party: RKP
+    kind: varjobudjetti
+    type: web
+    url: "https://sfp.fi/politik/alternativbudget/"
+    title: "RKP:s alternativbudget"
+    language: sv
+  - party: PS
+    kind: varjobudjetti
+    type: pdf
+    url: "https://www.perussuomalaiset.fi/wp-content/uploads/2025/12/PS-runkolehti-4_2025_netti.pdf"
+    title: "Perussuomalaisten vaihtoehtoinen budjetti 2026"

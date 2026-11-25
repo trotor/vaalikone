@@ -1,46 +1,67 @@
 <!DOCTYPE html>
-<html lang="fi">
+<html lang="fi" data-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Vaalikone Chat</title>
     <style>
+        :root, html[data-theme="dark"] {
+            --bg: #0f172a; --bg-2: #1e293b; --border: #334155; --text: #e2e8f0;
+            --text-dim: #94a3b8; --accent: #3b82f6; --accent-hover: #2563eb;
+            --user-bg: #1e40af; --input-bg: #0f172a; --tag-bg: #334155;
+        }
+        html[data-theme="light"] {
+            --bg: #f1f5f9; --bg-2: #ffffff; --border: #cbd5e1; --text: #0f172a;
+            --text-dim: #64748b; --accent: #2563eb; --accent-hover: #1d4ed8;
+            --user-bg: #3b82f6; --input-bg: #ffffff; --tag-bg: #e2e8f0;
+        }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-            background: #0f172a;
-            color: #e2e8f0;
+            background: var(--bg);
+            color: var(--text);
             height: 100vh;
             display: flex;
             flex-direction: column;
         }
         header {
-            background: #1e293b;
-            border-bottom: 1px solid #334155;
-            padding: 16px 24px;
+            background: var(--bg-2);
+            border-bottom: 1px solid var(--border);
+            padding: 12px 24px;
             display: flex;
             align-items: center;
             gap: 16px;
+            flex-wrap: wrap;
         }
-        header h1 { font-size: 20px; font-weight: 600; color: #f1f5f9; }
-        header .stats { font-size: 13px; color: #94a3b8; margin-left: auto; }
+        header h1 { font-size: 20px; font-weight: 600; }
+        header .stats { font-size: 13px; color: var(--text-dim); margin-left: auto; }
+        header button.icon-btn {
+            background: var(--tag-bg); color: var(--text); border: none;
+            border-radius: 6px; padding: 6px 10px; font-size: 14px; cursor: pointer;
+        }
         .filters {
-            background: #1e293b;
-            border-bottom: 1px solid #334155;
+            background: var(--bg-2);
+            border-bottom: 1px solid var(--border);
             padding: 8px 24px;
             display: flex;
             gap: 12px;
             align-items: center;
             font-size: 13px;
+            flex-wrap: wrap;
         }
-        .filters label { color: #94a3b8; }
+        .filters label { color: var(--text-dim); }
         .filters select, .filters input[type="checkbox"] {
-            background: #0f172a;
-            color: #e2e8f0;
-            border: 1px solid #475569;
+            background: var(--input-bg);
+            color: var(--text);
+            border: 1px solid var(--border);
             border-radius: 6px;
             padding: 4px 8px;
             font-size: 13px;
+        }
+        .filters input[type="password"] {
+            background: var(--input-bg); color: var(--text);
+            border: 1px solid var(--border); border-radius: 6px;
+            padding: 4px 8px; font-size: 12px; width: 140px;
         }
         .chat-area {
             flex: 1;
@@ -50,13 +71,9 @@
             flex-direction: column;
             gap: 16px;
         }
-        .message {
-            max-width: 800px;
-            width: 100%;
-            margin: 0 auto;
-        }
+        .message { max-width: 800px; width: 100%; margin: 0 auto; }
         .message.user {
-            background: #1e40af;
+            background: var(--user-bg); color: #fff;
             border-radius: 16px 16px 4px 16px;
             padding: 12px 16px;
             align-self: flex-end;
@@ -64,155 +81,134 @@
             max-width: 600px;
         }
         .message.assistant {
-            background: #1e293b;
-            border: 1px solid #334155;
+            background: var(--bg-2);
+            border: 1px solid var(--border);
             border-radius: 4px 16px 16px 16px;
             padding: 16px 20px;
         }
-        .message.assistant .answer {
-            line-height: 1.7;
-        }
+        .message.assistant .answer { line-height: 1.7; }
         .answer p { margin-bottom: 8px; }
         .answer ul, .answer ol { margin: 6px 0 6px 20px; }
         .answer li { margin-bottom: 4px; }
-        .answer strong { color: #f1f5f9; }
-        .answer h3, .answer h4 { color: #f1f5f9; margin: 12px 0 6px 0; font-size: 15px; }
-        .answer hr { border: none; border-top: 1px solid #334155; margin: 10px 0; }
+        .answer h3, .answer h4 { margin: 12px 0 6px 0; font-size: 15px; }
+        .answer hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
         .sources {
-            margin-top: 12px;
-            padding-top: 12px;
-            border-top: 1px solid #334155;
-            font-size: 13px;
-            color: #94a3b8;
+            margin-top: 12px; padding-top: 12px;
+            border-top: 1px solid var(--border);
+            font-size: 13px; color: var(--text-dim);
         }
         .source-tag {
             display: inline-block;
-            background: #334155;
             border-radius: 4px;
             padding: 2px 8px;
             margin: 2px 4px 2px 0;
             font-size: 12px;
+            font-weight: 600;
+            color: #fff;
+            background: var(--tag-bg);
         }
-        .loading {
-            color: #94a3b8;
-            display: flex;
-            align-items: center;
-            gap: 14px;
-            padding: 4px 0;
-        }
-        .loading-dots {
-            display: flex;
-            gap: 6px;
-        }
+        .loading { color: var(--text-dim); display: flex; align-items: center; gap: 14px; padding: 4px 0; }
+        .loading-dots { display: flex; gap: 6px; }
         .loading-dots span {
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            background: #3b82f6;
+            width: 10px; height: 10px; border-radius: 50%;
+            background: var(--accent);
             animation: pulse 1.4s ease-in-out infinite;
         }
         .loading-dots span:nth-child(2) { animation-delay: 0.2s; }
         .loading-dots span:nth-child(3) { animation-delay: 0.4s; }
         @keyframes pulse {
-            0%, 100% { transform: scale(0.5); opacity: 0.2; background: #3b82f6; }
-            50% { transform: scale(1.2); opacity: 1; background: #60a5fa; }
+            0%, 100% { transform: scale(0.5); opacity: 0.2; }
+            50% { transform: scale(1.2); opacity: 1; }
         }
-        .loading-text {
-            font-style: italic;
-            animation: fadeInOut 2s ease-in-out infinite;
-        }
-        @keyframes fadeInOut {
-            0%, 100% { opacity: 0.5; }
-            50% { opacity: 1; }
-        }
-        .message.assistant.is-loading {
-            border-color: #3b82f6;
-            animation: shimmer 2s ease-in-out infinite;
-        }
+        .loading-text { font-style: italic; animation: fadeInOut 2s ease-in-out infinite; }
+        @keyframes fadeInOut { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
+        .message.assistant.is-loading { border-color: var(--accent); animation: shimmer 2s ease-in-out infinite; }
         @keyframes shimmer {
-            0%, 100% { border-color: #334155; }
-            50% { border-color: #3b82f6; }
+            0%, 100% { border-color: var(--border); }
+            50% { border-color: var(--accent); }
         }
-        .input-area {
-            background: #1e293b;
-            border-top: 1px solid #334155;
-            padding: 16px 24px;
-        }
-        .input-row {
-            max-width: 800px;
-            margin: 0 auto;
-            display: flex;
-            gap: 8px;
-        }
+        .cursor { display: inline-block; width: 8px; height: 1em; background: var(--accent); animation: blink 0.8s step-end infinite; vertical-align: text-bottom; }
+        @keyframes blink { 50% { opacity: 0; } }
+        .input-area { background: var(--bg-2); border-top: 1px solid var(--border); padding: 16px 24px; }
+        .input-row { max-width: 800px; margin: 0 auto; display: flex; gap: 8px; }
         .input-row input[type="text"] {
-            flex: 1;
-            background: #0f172a;
-            color: #e2e8f0;
-            border: 1px solid #475569;
-            border-radius: 8px;
-            padding: 12px 16px;
-            font-size: 15px;
-            outline: none;
+            flex: 1; background: var(--input-bg); color: var(--text);
+            border: 1px solid var(--border); border-radius: 8px;
+            padding: 12px 16px; font-size: 15px; outline: none;
         }
-        .input-row input[type="text"]:focus { border-color: #3b82f6; }
-        .input-row input[type="text"]::placeholder { color: #64748b; }
+        .input-row input[type="text"]:focus { border-color: var(--accent); }
+        .input-row input[type="text"]::placeholder { color: var(--text-dim); }
         .input-row button {
-            background: #3b82f6;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            padding: 12px 24px;
-            font-size: 15px;
-            cursor: pointer;
-            font-weight: 500;
+            background: var(--accent); color: white; border: none;
+            border-radius: 8px; padding: 12px 24px; font-size: 15px;
+            cursor: pointer; font-weight: 500;
         }
-        .input-row button:hover { background: #2563eb; }
-        .input-row button:disabled { background: #475569; cursor: not-allowed; }
-        .welcome {
-            max-width: 600px;
-            margin: auto;
-            text-align: center;
-            color: #94a3b8;
-        }
-        .welcome h2 { color: #f1f5f9; margin-bottom: 12px; font-size: 24px; }
+        .input-row button:hover { background: var(--accent-hover); }
+        .input-row button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .welcome { max-width: 600px; margin: auto; text-align: center; color: var(--text-dim); }
+        .welcome h2 { margin-bottom: 12px; font-size: 24px; color: var(--text); }
         .welcome p { margin-bottom: 16px; line-height: 1.5; }
         .welcome .examples { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
         .welcome .example {
-            background: #1e293b;
-            border: 1px solid #334155;
-            border-radius: 8px;
-            padding: 10px 16px;
-            cursor: pointer;
-            text-align: left;
-            color: #cbd5e1;
-            transition: border-color 0.2s;
+            background: var(--bg-2); border: 1px solid var(--border);
+            border-radius: 8px; padding: 10px 16px; cursor: pointer;
+            text-align: left; color: var(--text); transition: border-color 0.2s;
         }
-        .welcome .example:hover { border-color: #3b82f6; color: #f1f5f9; }
+        .welcome .example:hover { border-color: var(--accent); }
         .status-bar {
-            background: #1e293b;
-            border-bottom: 1px solid #334155;
-            padding: 6px 24px;
-            font-size: 12px;
-            display: flex;
-            gap: 16px;
-            align-items: center;
+            background: var(--bg-2); border-bottom: 1px solid var(--border);
+            padding: 6px 24px; font-size: 12px; display: flex; gap: 16px; align-items: center;
         }
-        .status-dot {
-            display: inline-block;
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            margin-right: 4px;
-        }
+        .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
         .status-dot.green { background: #22c55e; }
         .status-dot.red { background: #ef4444; }
         .status-dot.yellow { background: #eab308; }
-        .status-item { color: #94a3b8; }
+        .status-item { color: var(--text-dim); }
+        /* History drawer */
+        #historyDrawer {
+            display: none;
+            position: fixed; top: 0; left: 0; bottom: 0; width: 300px;
+            background: var(--bg-2); border-right: 1px solid var(--border);
+            z-index: 50; padding: 16px; overflow-y: auto;
+            box-shadow: 4px 0 16px rgba(0,0,0,0.3);
+        }
+        #historyDrawer.open { display: block; }
+        #historyDrawer h3 { font-size: 15px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
+        #historyDrawer .hist-item {
+            padding: 8px 10px; border-radius: 6px; cursor: pointer;
+            font-size: 13px; color: var(--text); margin-bottom: 4px;
+            border: 1px solid transparent; overflow: hidden;
+            text-overflow: ellipsis; white-space: nowrap;
+        }
+        #historyDrawer .hist-item:hover { background: var(--tag-bg); }
+        #historyDrawer .hist-empty { color: var(--text-dim); font-size: 13px; }
+        #historyDrawer .hist-clear {
+            background: none; border: 1px solid var(--border); color: var(--text-dim);
+            border-radius: 6px; padding: 4px 8px; font-size: 12px; cursor: pointer;
+        }
+        #overlay {
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 40;
+        }
+        #overlay.open { display: block; }
+        @media (max-width: 640px) {
+            header { padding: 10px 12px; }
+            .filters, .status-bar { padding: 6px 12px; }
+            .chat-area { padding: 12px; }
+            .input-area { padding: 10px 12px; }
+            #historyDrawer { width: 260px; }
+        }
     </style>
 </head>
 <body>
+    <div id="overlay"></div>
+    <div id="historyDrawer">
+        <h3>Historia <button class="hist-clear" id="clearHistory">Tyhjennä</button></h3>
+        <div id="historyList"></div>
+    </div>
     <header>
+        <button class="icon-btn" id="historyBtn" title="Keskusteluhistoria">☰</button>
         <h1>Vaalikone Chat</h1>
+        <button class="icon-btn" id="themeBtn" title="Vaihda teema">☀️</button>
         <div class="stats" id="stats"></div>
     </header>
     <div class="status-bar" id="statusBar">
@@ -226,13 +222,16 @@
             <option value="">Kaikki puolueet</option>
         </select>
         <label><input type="checkbox" id="useSemantic" checked> Semanttinen haku</label>
+        <label><input type="checkbox" id="useStreaming" checked> Streaming</label>
         <label>Malli:</label>
         <select id="modelSelect"></select>
+        <label>API-avain:</label>
+        <input type="password" id="apiKeyInput" placeholder="X-API-Key (valinnainen)">
     </div>
     <div class="chat-area" id="chatArea">
         <div class="welcome" id="welcome">
             <h2>Kysy suomalaisesta politiikasta</h2>
-            <p>Tietokannassa on puolueohjelmia, varjobudjetteja ja kansanedustajien tietoja kaikilta 16 puolueelta.</p>
+            <p>Tietokannassa on puolueohjelmia, varjobudjetteja, täysistuntopuheenvuoroja, kirjallisia kysymyksiä ja kansanedustajien äänestyshistoria.</p>
             <div class="examples" id="examples"></div>
         </div>
     </div>
@@ -250,8 +249,108 @@
         const welcomeEl = document.getElementById('welcome');
         const examplesEl = document.getElementById('examples');
 
+        // --- Party colors (approximate official brand colors) ---
+        const PARTY_COLORS = {
+            SDP: '#E03C31', KOK: '#005B9F', PS: '#FEDD00', KESK: '#009645',
+            VIHR: '#00A94F', VAS: '#D22630', RKP: '#FFD100', KD: '#7C3AED',
+            LIIK: '#E6007E', PIR: '#6B21A8', EOP: '#16a34a', FP: '#db2777',
+            VKK: '#1e3a8a', SKP: '#dc2626', LIB: '#0ea5e9', SML: '#0f172a',
+        };
+        function partyColor(abbr) {
+            if (!abbr) return 'var(--tag-bg)';
+            const c = PARTY_COLORS[abbr];
+            if (!c) return 'var(--tag-bg)';
+            // Yellow-ish backgrounds need dark text
+            const light = ['#FEDD00', '#FFD100'].includes(c);
+            return c + (light ? '' : '');
+        }
+        function partyTextColor(abbr) {
+            return ['#FEDD00', '#FFD100'].includes(PARTY_COLORS[abbr]) ? '#0f172a' : '#ffffff';
+        }
+
+        // --- Theme ---
+        const themeBtn = document.getElementById('themeBtn');
+        function applyTheme(theme) {
+            document.documentElement.setAttribute('data-theme', theme);
+            themeBtn.textContent = theme === 'dark' ? '☀️' : '🌙';
+            localStorage.setItem('vaalikone-theme', theme);
+        }
+        applyTheme(localStorage.getItem('vaalikone-theme') || 'dark');
+        themeBtn.addEventListener('click', () => {
+            const cur = document.documentElement.getAttribute('data-theme');
+            applyTheme(cur === 'dark' ? 'light' : 'dark');
+        });
+
+        // --- API key (sent as X-API-Key when set) ---
+        const apiKeyInput = document.getElementById('apiKeyInput');
+        apiKeyInput.value = localStorage.getItem('vaalikone-api-key') || '';
+        apiKeyInput.addEventListener('change', () => {
+            localStorage.setItem('vaalikone-api-key', apiKeyInput.value.trim());
+        });
+        function apiHeaders(extra) {
+            const h = Object.assign({}, extra || {});
+            const key = localStorage.getItem('vaalikone-api-key');
+            if (key) h['X-API-Key'] = key;
+            return h;
+        }
+
+        // --- Chat history (localStorage) ---
+        const historyDrawer = document.getElementById('historyDrawer');
+        const overlay = document.getElementById('overlay');
+        const historyList = document.getElementById('historyList');
+        function loadHistory() {
+            try { return JSON.parse(localStorage.getItem('vaalikone-history') || '[]'); }
+            catch (e) { return []; }
+        }
+        function saveHistory(h) {
+            localStorage.setItem('vaalikone-history', JSON.stringify(h.slice(0, 100)));
+        }
+        function addToHistory(question, answer) {
+            const h = loadHistory();
+            h.unshift({ q: question, a: (answer || '').substring(0, 4000), t: Date.now() });
+            saveHistory(h);
+            renderHistory();
+        }
+        function renderHistory() {
+            const h = loadHistory();
+            historyList.textContent = '';
+            if (!h.length) {
+                const div = document.createElement('div');
+                div.className = 'hist-empty';
+                div.textContent = 'Ei keskusteluja vielä.';
+                historyList.appendChild(div);
+                return;
+            }
+            h.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'hist-item';
+                div.textContent = item.q;
+                div.title = item.q + '\n\n' + (item.a || '').substring(0, 300);
+                div.addEventListener('click', () => {
+                    chatArea.textContent = '';
+                    chatArea.appendChild(createUserMessage(item.q));
+                    const msg = document.createElement('div');
+                    msg.className = 'message assistant';
+                    populateAssistantMessage(msg, { answer: item.a, sources: [] });
+                    chatArea.appendChild(msg);
+                    toggleHistory(false);
+                });
+                historyList.appendChild(div);
+            });
+        }
+        function toggleHistory(open) {
+            historyDrawer.classList.toggle('open', open);
+            overlay.classList.toggle('open', open);
+            if (open) renderHistory();
+        }
+        document.getElementById('historyBtn').addEventListener('click', () => toggleHistory(!historyDrawer.classList.contains('open')));
+        overlay.addEventListener('click', () => toggleHistory(false));
+        document.getElementById('clearHistory').addEventListener('click', () => {
+            saveHistory([]); renderHistory();
+        });
+
         // Load suggestions from API (mix of recent queries + defaults)
-        fetch('/api/v1/suggestions').then(r => r.json()).then(data => {
+        fetch('/api/v1/suggestions', { headers: apiHeaders() }).then(r => r.json()).then(data => {
             (data.suggestions || []).forEach(q => {
                 const div = document.createElement('div');
                 div.className = 'example';
@@ -260,8 +359,7 @@
                 examplesEl.appendChild(div);
             });
         }).catch(() => {
-            // Fallback if API fails
-            ['Vertaa puolueiden veropolitiikkaa', 'Mitä puolueet sanovat metsäkeskuksesta?'].forEach(q => {
+            ['Vertaa puolueiden veropolitiikkaa', 'Mitä puolueet sanovat ilmastonmuutoksesta?'].forEach(q => {
                 const div = document.createElement('div');
                 div.className = 'example';
                 div.textContent = q;
@@ -287,7 +385,6 @@
 
             if (connectivity.openai) {
                 [
-                    ['gpt-5.4-nano', 'GPT-5.4 Nano (paras hinta/laatu)'],
                     ['gpt-4.1-mini', 'GPT-4.1 Mini'],
                     ['gpt-4.1-nano', 'GPT-4.1 Nano (nopein)'],
                     ['gpt-4.1', 'GPT-4.1 (paras laatu)'],
@@ -309,7 +406,6 @@
                 });
             }
 
-            // If no models, add a text-only mode
             if (sel.options.length === 0) {
                 const opt = document.createElement('option');
                 opt.value = '__text_only__';
@@ -317,35 +413,31 @@
                 sel.appendChild(opt);
             }
 
-            // Auto-disable semantic search if offline and no OpenAI
             if (!connectivity.openai) {
                 document.getElementById('useSemantic').checked = false;
             }
         }
 
-        // Check connectivity
-        fetch('/api/v1/connectivity').then(r => r.json()).then(data => {
+        fetch('/api/v1/connectivity', { headers: apiHeaders() }).then(r => r.json()).then(data => {
             connectivity = data;
-            setStatus('statusInternet', data.internet, 'Internet: ' + (data.internet ? 'OK' : 'ei yhteytta'));
-            setStatus('statusOpenai', data.openai, 'OpenAI: ' + (data.openai ? 'OK' : 'ei kaytettavissa'));
-            setStatus('statusOllama', data.ollama, 'Ollama: ' + (data.ollama ? data.ollama_models.length + ' mallia' : 'ei kaytettavissa'));
+            setStatus('statusInternet', data.internet, 'Internet: ' + (data.internet ? 'OK' : 'ei yhteyttä'));
+            setStatus('statusOpenai', data.openai, 'OpenAI: ' + (data.openai ? 'OK' : 'ei käytettävissä'));
+            setStatus('statusOllama', data.ollama, 'Ollama: ' + (data.ollama ? data.ollama_models.length + ' mallia' : 'ei käytettävissä'));
             populateModels();
         }).catch(() => {
-            setStatus('statusInternet', false, 'Internet: ei yhteytta');
-            setStatus('statusOpenai', false, 'OpenAI: ei kaytettavissa');
-            setStatus('statusOllama', false, 'Ollama: ei kaytettavissa');
+            setStatus('statusInternet', false, 'Internet: ei yhteyttä');
+            setStatus('statusOpenai', false, 'OpenAI: ei käytettävissä');
+            setStatus('statusOllama', false, 'Ollama: ei käytettävissä');
             populateModels();
         });
 
-        // Load stats
-        fetch('/api/v1/stats').then(r => r.json()).then(data => {
+        fetch('/api/v1/stats', { headers: apiHeaders() }).then(r => r.json()).then(data => {
             document.getElementById('stats').textContent =
                 data.parties + ' puoluetta | ' + data.documents + ' dokumenttia | ' +
-                data.embeddings + ' embeddings | ' + data.votes + ' aanestysta';
-        });
+                data.votes + ' äänestystä | ' + (data.candidates || 0) + ' ehdokasta';
+        }).catch(() => {});
 
-        // Load parties
-        fetch('/api/v1/parties').then(r => r.json()).then(parties => {
+        fetch('/api/v1/parties', { headers: apiHeaders() }).then(r => r.json()).then(parties => {
             const sel = document.getElementById('partyFilter');
             parties.forEach(p => {
                 const opt = document.createElement('option');
@@ -353,22 +445,19 @@
                 opt.textContent = p.abbreviation + ' - ' + p.name;
                 sel.appendChild(opt);
             });
-        });
+        }).catch(() => {});
 
         input.addEventListener('keydown', e => {
             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
         });
-
         sendBtn.addEventListener('click', send);
 
         function renderMarkdown(container, text) {
-            // Safe markdown rendering via DOM manipulation (no innerHTML)
             const lines = text.split('\n');
             let currentList = null;
             let currentListType = null;
 
             function addInlineFormatting(parent, text) {
-                // Bold: **text** or __text__
                 const parts = text.split(/(\*\*[^*]+\*\*|__[^_]+__)/g);
                 parts.forEach(part => {
                     if ((part.startsWith('**') && part.endsWith('**')) || (part.startsWith('__') && part.endsWith('__'))) {
@@ -380,18 +469,12 @@
                     }
                 });
             }
-
             function closePendingList() {
                 if (currentList) { container.appendChild(currentList); currentList = null; currentListType = null; }
             }
-
             lines.forEach(line => {
                 const trimmed = line.trim();
-
-                // Empty line
                 if (!trimmed) { closePendingList(); return; }
-
-                // Headings
                 if (trimmed.startsWith('### ')) {
                     closePendingList();
                     const h = document.createElement('h4');
@@ -406,15 +489,11 @@
                     container.appendChild(h);
                     return;
                 }
-
-                // Horizontal rule
                 if (trimmed === '---' || trimmed === '***') {
                     closePendingList();
                     container.appendChild(document.createElement('hr'));
                     return;
                 }
-
-                // Unordered list
                 if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
                     if (currentListType !== 'ul') { closePendingList(); currentList = document.createElement('ul'); currentListType = 'ul'; }
                     const li = document.createElement('li');
@@ -422,8 +501,6 @@
                     currentList.appendChild(li);
                     return;
                 }
-
-                // Ordered list
                 const olMatch = trimmed.match(/^(\d+)\.\s(.+)/);
                 if (olMatch) {
                     if (currentListType !== 'ol') { closePendingList(); currentList = document.createElement('ol'); currentListType = 'ol'; }
@@ -432,8 +509,6 @@
                     currentList.appendChild(li);
                     return;
                 }
-
-                // Paragraph
                 closePendingList();
                 const p = document.createElement('p');
                 addInlineFormatting(p, trimmed);
@@ -456,9 +531,7 @@
             loading.className = 'loading';
             const dots = document.createElement('div');
             dots.className = 'loading-dots';
-            for (let i = 0; i < 3; i++) {
-                dots.appendChild(document.createElement('span'));
-            }
+            for (let i = 0; i < 3; i++) dots.appendChild(document.createElement('span'));
             loading.appendChild(dots);
             const text = document.createElement('span');
             text.className = 'loading-text';
@@ -468,21 +541,12 @@
             return div;
         }
 
-        function populateAssistantMessage(container, data) {
-            container.classList.remove('is-loading');
-            container.textContent = '';
-
-            const answer = document.createElement('div');
-            answer.className = 'answer';
-            renderMarkdown(answer, data.answer || '');
-            container.appendChild(answer);
-
-            // Cost & model info bar — always shown
+        function appendMeta(container, data) {
             const costDiv = document.createElement('div');
-            costDiv.style.cssText = 'font-size:11px; color:#64748b; margin-top:10px; padding-top:8px; border-top:1px solid #1e293b; display:flex; gap:16px; flex-wrap:wrap;';
+            costDiv.style.cssText = 'font-size:11px; color:var(--text-dim); margin-top:10px; padding-top:8px; border-top:1px solid var(--border); display:flex; gap:16px; flex-wrap:wrap;';
             if (data.model) {
                 const modelSpan = document.createElement('span');
-                modelSpan.style.cssText = 'background:#1e293b; padding:2px 8px; border-radius:4px;';
+                modelSpan.style.cssText = 'background:var(--tag-bg); padding:2px 8px; border-radius:4px;';
                 modelSpan.textContent = data.model;
                 costDiv.appendChild(modelSpan);
             }
@@ -500,50 +564,60 @@
                 freeSpan.textContent = 'ilmainen (lokaali)';
                 freeSpan.style.color = '#22c55e';
                 costDiv.appendChild(freeSpan);
-            } else if (data.cost === 0 || data.cost === 0.0) {
-                const unknownSpan = document.createElement('span');
-                unknownSpan.textContent = 'hinta: ei saatavilla';
-                costDiv.appendChild(unknownSpan);
             }
             container.appendChild(costDiv);
+        }
 
-            if (data.sources && data.sources.length > 0) {
-                const sourcesDiv = document.createElement('div');
-                sourcesDiv.className = 'sources';
-                const label = document.createElement('div');
-                label.style.marginBottom = '6px';
-                label.style.fontWeight = '500';
-                label.textContent = 'Lahteet:';
-                sourcesDiv.appendChild(label);
-                data.sources.forEach(s => {
-                    const row = document.createElement('div');
-                    row.style.marginBottom = '4px';
-                    const tag = document.createElement('span');
-                    tag.className = 'source-tag';
-                    tag.textContent = s.party || '?';
-                    row.appendChild(tag);
-                    if (s.url) {
-                        const link = document.createElement('a');
-                        link.href = s.url;
-                        link.target = '_blank';
-                        link.rel = 'noopener noreferrer';
-                        link.textContent = s.title || s.url;
-                        link.style.color = '#60a5fa';
-                        link.style.textDecoration = 'none';
-                        link.style.marginLeft = '6px';
-                        row.appendChild(link);
-                    } else {
-                        const titleSpan = document.createElement('span');
-                        titleSpan.textContent = ' ' + (s.title || '');
-                        row.appendChild(titleSpan);
-                    }
-                    sourcesDiv.appendChild(row);
-                });
-                container.appendChild(sourcesDiv);
-            }
+        function appendSources(container, sources) {
+            if (!sources || !sources.length) return;
+            const sourcesDiv = document.createElement('div');
+            sourcesDiv.className = 'sources';
+            const label = document.createElement('div');
+            label.style.marginBottom = '6px';
+            label.style.fontWeight = '500';
+            label.textContent = 'Lähteet:';
+            sourcesDiv.appendChild(label);
+            sources.forEach(s => {
+                const row = document.createElement('div');
+                row.style.marginBottom = '4px';
+                const tag = document.createElement('span');
+                tag.className = 'source-tag';
+                tag.textContent = s.party || '?';
+                if (PARTY_COLORS[s.party]) {
+                    tag.style.background = partyColor(s.party);
+                    tag.style.color = partyTextColor(s.party);
+                }
+                row.appendChild(tag);
+                if (s.url) {
+                    const link = document.createElement('a');
+                    link.href = s.url;
+                    link.target = '_blank';
+                    link.rel = 'noopener noreferrer';
+                    link.textContent = s.title || s.url;
+                    link.style.color = 'var(--accent)';
+                    link.style.textDecoration = 'none';
+                    link.style.marginLeft = '6px';
+                    row.appendChild(link);
+                } else {
+                    const titleSpan = document.createElement('span');
+                    titleSpan.textContent = ' ' + (s.title || '');
+                    row.appendChild(titleSpan);
+                }
+                sourcesDiv.appendChild(row);
+            });
+            container.appendChild(sourcesDiv);
+        }
 
-            // Fetch follow-up suggestions
-            if (data.answer && data.answer.length > 50) {
+        function populateAssistantMessage(container, data) {
+            container.classList.remove('is-loading');
+            container.textContent = '';
+            const answer = document.createElement('div');
+            answer.className = 'answer';
+            renderMarkdown(answer, data.answer || '');
+            container.appendChild(answer);
+            appendMeta(container, data);
+            appendSources(container, data.sources);
+            if (data.answer && data.answer.length > 50 && !data._noSuggest) {
                 fetchSuggestions(container, data);
             }
         }
@@ -552,7 +626,7 @@
             try {
                 const resp = await fetch('/api/v1/suggest', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: apiHeaders({ 'Content-Type': 'application/json' }),
                     body: JSON.stringify({
                         question: data._question || '',
                         answer: (data.answer || '').substring(0, 1000),
@@ -565,20 +639,17 @@
                     result.suggestions.forEach(s => {
                         const btn = document.createElement('button');
                         btn.textContent = s;
-                        btn.style.cssText = 'background:#1e3a5f; color:#93c5fd; border:1px solid #2563eb; border-radius:16px; padding:6px 14px; font-size:13px; cursor:pointer; transition:background 0.2s;';
-                        btn.addEventListener('mouseenter', () => { btn.style.background = '#1e40af'; });
-                        btn.addEventListener('mouseleave', () => { btn.style.background = '#1e3a5f'; });
+                        btn.style.cssText = 'background:var(--tag-bg); color:var(--text); border:1px solid var(--accent); border-radius:16px; padding:6px 14px; font-size:13px; cursor:pointer;';
                         btn.addEventListener('click', () => { input.value = s; send(); });
                         sugDiv.appendChild(btn);
                     });
                     container.appendChild(sugDiv);
                 }
-            } catch (e) {
-                // Silently fail — suggestions are optional
-            }
+            } catch (e) { /* suggestions optional */ }
         }
 
         function showError(container, message) {
+            container.classList.remove('is-loading');
             container.textContent = '';
             const err = document.createElement('div');
             err.className = 'answer';
@@ -591,9 +662,7 @@
             const question = input.value.trim();
             if (!question) return;
 
-            if (welcomeEl && welcomeEl.parentNode) {
-                welcomeEl.parentNode.removeChild(welcomeEl);
-            }
+            if (welcomeEl && welcomeEl.parentNode) welcomeEl.parentNode.removeChild(welcomeEl);
 
             chatArea.appendChild(createUserMessage(question));
 
@@ -604,39 +673,89 @@
             input.value = '';
             sendBtn.disabled = true;
 
-            try {
-                const party = document.getElementById('partyFilter').value || null;
-                const model = document.getElementById('modelSelect').value;
-                const useSemantic = document.getElementById('useSemantic').checked;
+            const party = document.getElementById('partyFilter').value || null;
+            const model = document.getElementById('modelSelect').value;
+            const useSemantic = document.getElementById('useSemantic').checked;
+            const useStreaming = document.getElementById('useStreaming').checked;
 
-                if (model === '__text_only__') {
-                    // Text search only - no LLM
-                    const resp = await fetch('/api/v1/search?q=' + encodeURIComponent(question) + (party ? '&party=' + party : '') + '&limit=5');
-                    const data = await resp.json();
-                    if (data.results && data.results.length > 0) {
-                        const answer = data.results.map(r =>
-                            '[' + (r.party || '?') + '] ' + (r.title || '') + '\n' +
-                            (r.snippet || r.chunk_text || '').replace(/<\/?b>/g, '').substring(0, 300) + '...'
-                        ).join('\n\n');
-                        populateAssistantMessage(loadingMsg, {
-                            answer: 'Hakutulokset (ilman AI-vastausta):\n\n' + answer,
-                            sources: data.results.map(r => ({ party: r.party, title: r.title, url: r.source_url })),
-                        });
-                    } else {
-                        populateAssistantMessage(loadingMsg, {
-                            answer: 'Ei hakutuloksia.',
-                            sources: [],
-                        });
-                    }
-                } else {
+            try {
+                if (model === '__text_only__' || !useStreaming) {
                     const resp = await fetch('/api/v1/chat', {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ question: question, party: party, model: model, use_semantic: useSemantic }),
+                        headers: apiHeaders({ 'Content-Type': 'application/json' }),
+                        body: JSON.stringify({ question, party, model, use_semantic: useSemantic }),
                     });
+                    if (!resp.ok) {
+                        const errData = await resp.json().catch(() => ({}));
+                        throw new Error(errData.detail || ('HTTP ' + resp.status));
+                    }
                     const data = await resp.json();
                     data._question = question;
+                    if (model === '__text_only__') {
+                        // /api/v1/chat text-only returns answer+sources already
+                    }
                     populateAssistantMessage(loadingMsg, data);
+                    addToHistory(question, data.answer);
+                } else {
+                    // Streaming via SSE
+                    const resp = await fetch('/api/v1/chat/stream', {
+                        method: 'POST',
+                        headers: apiHeaders({ 'Content-Type': 'application/json' }),
+                        body: JSON.stringify({ question, party, model, use_semantic: useSemantic }),
+                    });
+                    if (!resp.ok) {
+                        const errData = await resp.json().catch(() => ({}));
+                        throw new Error(errData.detail || ('HTTP ' + resp.status));
+                    }
+                    loadingMsg.classList.remove('is-loading');
+                    loadingMsg.textContent = '';
+                    const answerDiv = document.createElement('div');
+                    answerDiv.className = 'answer';
+                    const cursor = document.createElement('span');
+                    cursor.className = 'cursor';
+                    answerDiv.appendChild(cursor);
+                    loadingMsg.appendChild(answerDiv);
+
+                    const reader = resp.body.getReader();
+                    const decoder = new TextDecoder();
+                    let buffer = '';
+                    let fullAnswer = '';
+                    let finalData = null;
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        buffer += decoder.decode(value, { stream: true });
+                        let idx;
+                        while ((idx = buffer.indexOf('\n\n')) >= 0) {
+                            const rawEvent = buffer.slice(0, idx);
+                            buffer = buffer.slice(idx + 2);
+                            if (!rawEvent.startsWith('data: ')) continue;
+                            let event;
+                            try { event = JSON.parse(rawEvent.slice(6)); } catch (e) { continue; }
+                            if (event.type === 'chunk') {
+                                fullAnswer += event.text;
+                                answerDiv.textContent = '';
+                                renderMarkdown(answerDiv, fullAnswer);
+                                answerDiv.appendChild(cursor);
+                                chatArea.scrollTop = chatArea.scrollHeight;
+                            } else if (event.type === 'done') {
+                                finalData = event;
+                            }
+                        }
+                    }
+                    cursor.remove();
+                    const data = finalData || { answer: fullAnswer, model };
+                    data._question = question;
+                    // Re-render final message with meta + sources
+                    loadingMsg.textContent = '';
+                    const ans = document.createElement('div');
+                    ans.className = 'answer';
+                    renderMarkdown(ans, data.answer || fullAnswer);
+                    loadingMsg.appendChild(ans);
+                    appendMeta(loadingMsg, data);
+                    appendSources(loadingMsg, data.sources);
+                    addToHistory(question, data.answer || fullAnswer);
+                    if ((data.answer || fullAnswer).length > 50) fetchSuggestions(loadingMsg, data);
                 }
             } catch (err) {
                 showError(loadingMsg, err.message);

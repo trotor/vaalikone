@@ -6,11 +6,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
 from vaalikone.core.config import get_settings
+from vaalikone.models.document import Document
+from vaalikone.models.embedding import Embedding
 from vaalikone.models.party import Party
 from vaalikone.models.representative import Representative
 from vaalikone.models.source import Source
-from vaalikone.models.document import Document
-from vaalikone.models.embedding import Embedding
 from vaalikone.models.vote import Vote
 
 

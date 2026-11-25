@@ -46,7 +46,7 @@ async def _ollama_embed(text: str, model_name: str) -> list[float]:
                 )
                 resp.raise_for_status()
                 return resp.json()["embedding"]
-            except (httpx.HTTPStatusError, httpx.ConnectError) as e:
+            except (httpx.HTTPStatusError, httpx.ConnectError):
                 if attempt < 2:
                     import asyncio
                     await asyncio.sleep(2)

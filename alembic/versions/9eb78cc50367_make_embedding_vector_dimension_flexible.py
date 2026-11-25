@@ -5,17 +5,13 @@ Revises: c34b63a5a28c
 Create Date: 2026-04-03 08:34:48.989464
 
 """
-from typing import Sequence, Union
-
-from alembic import op
-import sqlalchemy as sa
-
+from collections.abc import Sequence
 
 # revision identifiers, used by Alembic.
 revision: str = '9eb78cc50367'
-down_revision: Union[str, Sequence[str], None] = 'c34b63a5a28c'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = 'c34b63a5a28c'
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:

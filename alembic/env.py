@@ -1,12 +1,17 @@
 import asyncio
+import os
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from alembic import context
 from vaalikone.models import Base
 
 config = context.config
+
+# DATABASE_URL env var overrides alembic.ini (useful for CI / other environments)
+if os.environ.get("DATABASE_URL"):
+    config.set_main_option("sqlalchemy.url", os.environ["DATABASE_URL"])
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 

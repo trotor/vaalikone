@@ -23,7 +23,7 @@ async def _chat(question: str, party: str | None, model: str | None):
         click.echo(result["answer"])
 
         if result["sources"]:
-            click.echo(f"\nLähteet:")
+            click.echo("\nLähteet:")
             for s in result["sources"]:
                 click.echo(f"  - [{s['party'] or '?'}] {s['title']}")
 

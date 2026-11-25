@@ -1,17 +1,38 @@
-import httpx
-from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession
+import json
 
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from vaalikone.api.deps import get_db
 from vaalikone.core.config import get_settings
 from vaalikone.models.query_log import QueryLog
 from vaalikone.query.hybrid_search import text_search
 from vaalikone.query.pipeline import query as run_query
+from vaalikone.query.pipeline import retrieve
+from vaalikone.query.response import stream_response
 
 router = APIRouter(prefix="/api/v1", tags=["query"])
+
+TEXT_ONLY_MODEL = "__text_only__"
+
+
+def _check_model_allowed(model: str) -> str:
+    """Validate the requested chat model against the configured allowlist."""
+    settings = get_settings()
+    model = model.strip() if model else settings.DEFAULT_LLM_MODEL
+    if not model:
+        model = settings.DEFAULT_LLM_MODEL
+    allowed = settings.allowed_chat_models
+    if model not in allowed:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Model {model!r} not allowed. Allowed models: {allowed}",
+        )
+    return model
 
 
 @router.get("/search")
@@ -34,8 +55,8 @@ class ChatRequest(BaseModel):
 
 @router.post("/chat")
 async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db)):
-    model = request.model.strip() if request.model else "gpt-4o-mini"
-    if not model or model == "__text_only__":
+    model = _check_model_allowed(request.model or "gpt-4o-mini")
+    if model == TEXT_ONLY_MODEL:
         # Text-only mode — return search results without LLM
         results = await text_search(db, request.question, limit=10, party_filter=request.party)
         return {
@@ -43,7 +64,10 @@ async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db)):
                 f"[{r.get('party', '?')}] {r.get('title', '')}\n{(r.get('snippet') or '')[:300]}"
                 for r in results
             ) if results else "Ei hakutuloksia.",
-            "sources": [{"party": r.get("party"), "title": r.get("title"), "url": r.get("source_url")} for r in results],
+            "sources": [
+                {"party": r.get("party"), "title": r.get("title"), "url": r.get("source_url")}
+                for r in results
+            ],
             "model": "text-only",
         }
     result = await run_query(
@@ -70,6 +94,68 @@ async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db)):
     return result
 
 
+@router.post("/chat/stream")
+async def chat_stream(request: ChatRequest, db: AsyncSession = Depends(get_db)):
+    """Chat with SSE streaming: emits chunk events, then a done event with sources."""
+    model = _check_model_allowed(request.model or "gpt-4o-mini")
+
+    async def event_generator():
+        if model == TEXT_ONLY_MODEL:
+            results = await text_search(db, request.question, limit=10, party_filter=request.party)
+            answer = "\n\n".join(
+                f"[{r.get('party', '?')}] {r.get('title', '')}\n{(r.get('snippet') or '')[:300]}"
+                for r in results
+            ) if results else "Ei hakutuloksia."
+            yield f"data: {json.dumps({'type': 'chunk', 'text': answer}, ensure_ascii=False)}\n\n"
+            done = {
+                "type": "done", "answer": answer, "model": "text-only",
+                "sources": [
+                    {"party": r.get("party"), "title": r.get("title"), "url": r.get("source_url")}
+                    for r in results
+                ],
+            }
+            yield f"data: {json.dumps(done, ensure_ascii=False)}\n\n"
+            return
+
+        results = await retrieve(
+            db,
+            request.question,
+            party_filter=request.party,
+            use_semantic=request.use_semantic,
+        )
+        if not results:
+            done = {
+                "type": "done",
+                "answer": "Valitettavasti en löytänyt tietokannasta vastausta kysymykseesi.",
+                "model": model, "sources": [],
+            }
+            yield f"data: {json.dumps(done, ensure_ascii=False)}\n\n"
+            return
+
+        from vaalikone.query.pipeline import build_sources
+        full_answer = ""
+        async for event in stream_response(request.question, results, model=model):
+            if event["type"] == "chunk":
+                full_answer += event["text"]
+            else:
+                event["sources"] = build_sources(results)
+            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+        # Log the query
+        try:
+            log = QueryLog(
+                query_text=request.question,
+                response_text=full_answer[:2000],
+                model_used=model,
+            )
+            db.add(log)
+            await db.commit()
+        except Exception:
+            await db.rollback()
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
 class SuggestRequest(BaseModel):
     question: str
     answer: str
@@ -82,9 +168,11 @@ _random_question_pool: list[str] = []
 async def _fill_random_pool(db: AsyncSession, count: int = 10):
     """Generate random questions from document chunks using a cheap model."""
     import os
+
     import litellm
-    from vaalikone.models.embedding import Embedding
+
     from vaalikone.models.document import Document
+    from vaalikone.models.embedding import Embedding
     from vaalikone.models.party import Party
 
     settings = get_settings()
@@ -109,8 +197,8 @@ async def _fill_random_pool(db: AsyncSession, count: int = 10):
                     "content": (
                         f"Puolue: {party or '?'}, dokumentti: {title or ''}\n"
                         f"Teksti: {chunk_text[:400]}\n\n"
-                        "Keksi 1 lyhyt kiinnostava kysymys suomalaisesta politiikasta taman perusteella. "
-                        "Palauta VAIN kysymys."
+                        "Keksi 1 lyhyt kiinnostava kysymys suomalaisesta politiikasta "
+                        "taman perusteella. Palauta VAIN kysymys."
                     ),
                 }],
                 max_tokens=50,
@@ -127,6 +215,7 @@ async def suggest_followups(request: SuggestRequest, db: AsyncSession = Depends(
     """Return follow-up suggestions: 2 contextual + 1 random from pool."""
     import os
     import random
+
     import litellm
     settings = get_settings()
     if settings.OPENAI_API_KEY:
@@ -146,13 +235,17 @@ async def suggest_followups(request: SuggestRequest, db: AsyncSession = Depends(
                     "role": "system",
                     "content": (
                         "Generoi 2 lyhyttä jatkokysymystä suomalaisesta politiikasta edellisen "
-                        "kysymyksen ja vastauksen perusteella. Palauta VAIN 2 kysymystä, yksi per rivi, "
+                        "kysymyksen ja vastauksen perusteella. Palauta VAIN 2 kysymystä, "
+                        "yksi per rivi, "
                         "ilman numerointia tai muuta muotoilua. Suomeksi."
                     ),
                 },
                 {
                     "role": "user",
-                    "content": f"Kysymys: {request.question[:500]}\nVastaus: {request.answer[:800]}",
+                    "content": (
+                        f"Kysymys: {request.question[:500]}\n"
+                        f"Vastaus: {request.answer[:800]}"
+                    ),
                 },
             ],
             max_tokens=150,
@@ -190,10 +283,11 @@ DEFAULT_SUGGESTIONS = [
 
 @router.get("/suggestions")
 async def get_suggestions(db: AsyncSession = Depends(get_db)):
-    """Return question suggestions — mix of recent queries, random chunk inspiration, and defaults."""
+    """Question suggestions: recent queries, random chunk inspiration, and defaults."""
     import random
-    from vaalikone.models.embedding import Embedding
+
     from vaalikone.models.document import Document
+    from vaalikone.models.embedding import Embedding
     from vaalikone.models.party import Party
 
     # Get recent unique questions
@@ -217,6 +311,7 @@ async def get_suggestions(db: AsyncSession = Depends(get_db)):
         row = result.first()
         if row:
             import os
+
             import litellm
             settings = get_settings()
             if settings.OPENAI_API_KEY:
@@ -228,8 +323,8 @@ async def get_suggestions(db: AsyncSession = Depends(get_db)):
                     "content": (
                         f"Lue tama teksti puolueelta {row[2] or '?'} ({row[1] or ''}):\n"
                         f"{row[0][:500]}\n\n"
-                        "Keksi 1 lyhyt, kiinnostava kysymys suomalaisesta politiikasta taman perusteella. "
-                        "Palauta VAIN kysymys, ei muuta."
+                        "Keksi 1 lyhyt, kiinnostava kysymys suomalaisesta politiikasta "
+                        "taman perusteella. Palauta VAIN kysymys, ei muuta."
                     ),
                 }],
                 max_tokens=60,
@@ -290,7 +385,9 @@ async def check_connectivity():
     try:
         async with httpx.AsyncClient(timeout=5) as client:
             resp = await client.get("https://api.openai.com/v1/models",
-                                    headers={"Authorization": f"Bearer {settings.OPENAI_API_KEY or ''}"})
+                                    headers={
+                                        "Authorization": f"Bearer {settings.OPENAI_API_KEY or ''}"
+                                    })
             if resp.status_code in (200, 401):  # 401 = reachable but bad key
                 status["internet"] = True
             if resp.status_code == 200:

@@ -1,20 +1,25 @@
 import asyncio
+import re
 
 import click
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
 from vaalikone.core.config import get_settings
 from vaalikone.ingest.connectors.eduskunta import EduskuntaClient
-from vaalikone.ingest.connectors.pdf import fetch_and_extract_pdf
+from vaalikone.ingest.connectors.pdf import extract_pdf_bytes, fetch_and_extract_pdf
+from vaalikone.ingest.connectors.tilastokeskus import TilastokeskusClient
 from vaalikone.ingest.connectors.web import fetch_and_extract
-from vaalikone.models.document import Document, ContentType
+from vaalikone.ingest.url_validation import UnsafeURLError, validate_public_url
+from vaalikone.models.candidate import Candidate
+from vaalikone.models.document import ContentType, Document
+from vaalikone.models.election import Election, ElectionType
 from vaalikone.models.party import Party
 from vaalikone.models.representative import Representative
-from vaalikone.models.source import Source, SourceType, SourceStatus
+from vaalikone.models.source import Source, SourceStatus, SourceType
 from vaalikone.models.vote import Vote, VoteChoice
-
 
 # Maps eduskunta API party abbreviations to our abbreviations
 PARTY_MAP = {
@@ -39,7 +44,7 @@ def _map_vote(api_vote: str) -> VoteChoice:
         "Tyhjää": VoteChoice.TYHJA,
         "Poissa": VoteChoice.POISSA,
     }
-    return mapping.get(api_vote, VoteChoice.POISSA)
+    return mapping.get((api_vote or "").strip(), VoteChoice.POISSA)
 
 
 async def _get_session():
@@ -50,12 +55,81 @@ async def _get_session():
 
 
 async def _find_party(session: AsyncSession, api_party: str) -> Party | None:
-    abbr = PARTY_MAP.get(api_party.lower(), api_party.upper())
-    result = await session.execute(select(Party).where(Party.abbreviation == abbr))
-    return result.scalar_one_or_none()
+    abbr = PARTY_MAP.get((api_party or "").strip().lower(), (api_party or "").strip().upper())
+    result = await session.execute(
+        select(Party).where(Party.abbreviation == abbr).limit(1)
+    )
+    return result.scalars().first()
 
 
-async def _ingest_representatives():
+def _enqueue(task_name: str, **kwargs):
+    """Enqueue a Celery task; returns task id. Falls back to error if Redis is down."""
+    from vaalikone.workers import tasks
+
+    task = getattr(tasks, task_name)
+    result = task.delay(**kwargs)
+    click.echo(f"Enqueued task {task_name} (id={result.id})")
+    return result.id
+
+
+async def _store_document(
+    session: AsyncSession,
+    *,
+    source_type: SourceType,
+    url: str | None,
+    title: str,
+    text: str,
+    content_type: ContentType,
+    party_id=None,
+    representative_id=None,
+    published_at=None,
+    metadata: dict | None = None,
+) -> bool:
+    """Store a source+document, skipping if the URL was already indexed.
+    Returns True if stored, False if skipped."""
+    if url:
+        existing = await session.execute(select(Source).where(Source.url == url).limit(1))
+        source = existing.scalars().first()
+        if source:
+            # Upgrade content_type if the document was stored before types existed
+            if content_type != ContentType.MUU:
+                doc_res = await session.execute(
+                    select(Document).where(Document.source_id == source.id).limit(1)
+                )
+                doc = doc_res.scalars().first()
+                if doc and doc.content_type == ContentType.MUU:
+                    doc.content_type = content_type
+                    doc.metadata_ = {**(doc.metadata_ or {}), **(metadata or {})}
+            return False
+
+    source = Source(
+        source_type=source_type,
+        url=url,
+        title=title,
+        status=SourceStatus.INDEXED,
+        party_id=party_id,
+        representative_id=representative_id,
+        metadata_=metadata,
+    )
+    session.add(source)
+    await session.flush()
+
+    doc = Document(
+        source_id=source.id,
+        title=title,
+        content_text=text,
+        content_type=content_type,
+        party_id=party_id,
+        representative_id=representative_id,
+        published_at=published_at,
+        language="fi",
+        metadata_=metadata,
+    )
+    session.add(doc)
+    return True
+
+
+async def _ingest_representatives() -> dict:
     client = EduskuntaClient()
     click.echo("Fetching representatives from eduskunta API...")
     reps = await client.fetch_representatives()
@@ -64,10 +138,9 @@ async def _ingest_representatives():
     engine, async_session = await _get_session()
 
     async with async_session() as session:
-        # Register source
         source = Source(
             source_type=SourceType.API,
-            url="https://avoindata.eduskunta.fi/api/v1/tables/MemberOfParliament/rows",
+            url=f"{client.base_url}/api/v1/tables/MemberOfParliament/rows",
             title="Eduskunta - Kansanedustajat",
             status=SourceStatus.INDEXED,
         )
@@ -75,17 +148,32 @@ async def _ingest_representatives():
 
         added = 0
         skipped = 0
-        with session.no_autoflush:
-            for rep_data in reps:
-                person_id = rep_data.get("personId", "")
-                first_name = rep_data.get("firstname", "")
-                last_name = rep_data.get("lastname", "")
+        for rep_data in reps:
+            person_id = str(rep_data.get("personId", "") or "")
+            first_name = rep_data.get("firstname", "")
+            last_name = rep_data.get("lastname", "")
 
-                if not first_name or not last_name:
+            if not first_name or not last_name:
+                skipped += 1
+                continue
+
+            party = await _find_party(session, rep_data.get("party", ""))
+
+            if person_id:
+                stmt = pg_insert(Representative).values(
+                    person_id=person_id,
+                    first_name=first_name,
+                    last_name=last_name,
+                    party_id=party.id if party else None,
+                    social_media={"eduskunta_person_id": person_id},
+                )
+                stmt = stmt.on_conflict_do_nothing(index_elements=["person_id"])
+                result = await session.execute(stmt)
+                if result.rowcount:
+                    added += 1
+                else:
                     skipped += 1
-                    continue
-
-                # Check if already exists
+            else:
                 result = await session.execute(
                     select(Representative).where(
                         Representative.first_name == first_name,
@@ -95,36 +183,49 @@ async def _ingest_representatives():
                 if result.scalar_one_or_none():
                     skipped += 1
                     continue
-
-                party = await _find_party(session, rep_data.get("party", ""))
-
-                representative = Representative(
-                    first_name=first_name,
-                    last_name=last_name,
-                    party_id=party.id if party else None,
-                    social_media={"eduskunta_person_id": person_id},
+                session.add(
+                    Representative(
+                        first_name=first_name,
+                        last_name=last_name,
+                        party_id=party.id if party else None,
+                        social_media={"eduskunta_person_id": person_id} if person_id else None,
+                    )
                 )
-                session.add(representative)
                 added += 1
 
         await session.commit()
         click.echo(f"Added {added} representatives, skipped {skipped}.")
 
     await engine.dispose()
+    return {"added": added, "skipped": skipped}
 
 
-async def _ingest_votes(max_pages: int | None = None):
+async def _fetch_vote_subject_map(
+    client: EduskuntaClient, max_pages: int | None = None
+) -> dict[str, str]:
+    """Map AanestysId -> AanestysOtsikko (vote subject title)."""
+    summaries = await client.fetch_vote_summaries(max_pages=max_pages)
+    return {
+        str(s.get("AanestysId", "")): (s.get("AanestysOtsikko") or "").strip()
+        for s in summaries
+        if s.get("AanestysId")
+    }
+
+
+async def _ingest_votes(max_pages: int | None = None) -> dict:
     client = EduskuntaClient()
     click.echo("Fetching votes from eduskunta API...")
     votes = await client.fetch_votes(max_pages=max_pages)
     click.echo(f"Fetched {len(votes)} vote records from API.")
+    click.echo("Fetching vote subjects...")
+    subjects = await _fetch_vote_subject_map(client, max_pages=max_pages)
 
     engine, async_session = await _get_session()
 
     async with async_session() as session:
         source = Source(
             source_type=SourceType.API,
-            url="https://avoindata.eduskunta.fi/api/v1/tables/SaliDBAanestysEdustaja/rows",
+            url=f"{client.base_url}/api/v1/tables/SaliDBAanestysEdustaja/rows",
             title="Eduskunta - Äänestykset",
             status=SourceStatus.INDEXED,
         )
@@ -133,56 +234,311 @@ async def _ingest_votes(max_pages: int | None = None):
         added = 0
         skipped = 0
         with session.no_autoflush:
+            # Cache henkilonumero/name -> representative to avoid a query per vote row
+            rep_cache: dict[str, Representative | None] = {}
             for vote_data in votes:
+                person_id = str(vote_data.get("EdustajaHenkiloNumero", "") or "")
                 first_name = vote_data.get("EdustajaEtunimi", "")
                 last_name = vote_data.get("EdustajaSukunimi", "")
-
-                result = await session.execute(
-                    select(Representative).where(
-                        Representative.first_name == first_name,
-                        Representative.last_name == last_name,
-                    ).limit(1)
-                )
-                rep = result.scalar_one_or_none()
+                key = person_id or f"{first_name}|{last_name}"
+                if key not in rep_cache:
+                    if person_id:
+                        result = await session.execute(
+                            select(Representative)
+                            .where(Representative.person_id == person_id)
+                            .limit(1)
+                        )
+                    else:
+                        result = await session.execute(
+                            select(Representative)
+                            .where(
+                                Representative.first_name == first_name,
+                                Representative.last_name == last_name,
+                            )
+                            .limit(1)
+                        )
+                    rep_cache[key] = result.scalar_one_or_none()
+                rep = rep_cache[key]
                 if not rep:
                     skipped += 1
                     continue
 
-                vote = Vote(
+                aanestys_id = str(vote_data.get("AanestysId", "") or "")
+                if not aanestys_id:
+                    skipped += 1
+                    continue
+
+                stmt = pg_insert(Vote).values(
                     representative_id=rep.id,
-                    session=vote_data.get("IstuntoVPVuosi", ""),
-                    subject=vote_data.get("AanestysId", ""),
+                    session=str(vote_data.get("IstuntoVPVuosi", "") or "") or None,
+                    subject=aanestys_id,
+                    subject_title=subjects.get(aanestys_id),
                     vote=_map_vote(vote_data.get("EdustajaAanestys", "Poissa")),
                 )
-                session.add(vote)
-                added += 1
+                stmt = stmt.on_conflict_do_nothing(
+                    index_elements=["representative_id", "subject"],
+                    index_where=Vote.subject.isnot(None),
+                )
+                result = await session.execute(stmt)
+                if result.rowcount:
+                    added += 1
+                else:
+                    skipped += 1
 
         await session.commit()
         click.echo(f"Added {added} votes, skipped {skipped}.")
 
     await engine.dispose()
+    return {"added": added, "skipped": skipped}
 
 
-@click.group()
-def ingest():
-    """Ingest data from various sources."""
-    pass
+async def _ingest_vote_subjects(max_pages: int | None = None) -> dict:
+    """Backfill votes.subject_title from SaliDBAanestys for existing votes."""
+    client = EduskuntaClient()
+    click.echo("Fetching vote subjects...")
+    subjects = await _fetch_vote_subject_map(client, max_pages=max_pages)
+    click.echo(f"Got {len(subjects)} vote subjects.")
+
+    engine, async_session = await _get_session()
+    async with async_session() as session:
+        from sqlalchemy import update
+
+        updated = 0
+        for aanestys_id, title in subjects.items():
+            if not title:
+                continue
+            result = await session.execute(
+                update(Vote)
+                .where(Vote.subject == aanestys_id, Vote.subject_title.is_(None))
+                .values(subject_title=title)
+            )
+            updated += result.rowcount or 0
+        await session.commit()
+        click.echo(f"Updated subject_title on {updated} votes.")
+    await engine.dispose()
+    return {"updated": updated}
 
 
-@ingest.command()
-def representatives():
-    """Fetch and store representatives from eduskunta API."""
-    asyncio.run(_ingest_representatives())
+def _strip_html(html: str) -> str:
+    text = re.sub(r"(?is)<(script|style).*?</\1>", " ", html)
+    text = re.sub(r"(?s)<[^>]+>", " ", text)
+    text = re.sub(r"&nbsp;", " ", text)
+    text = re.sub(r"&auml;", "ä", text)
+    text = re.sub(r"&ouml;", "ö", text)
+    text = re.sub(r"&auml;", "ä", text)
+    text = re.sub(r"&#228;", "ä", text)
+    text = re.sub(r"&#246;", "ö", text)
+    text = re.sub(r"&amp;", "&", text)
+    return re.sub(r"\s+", " ", text).strip()
 
 
-@ingest.command()
-@click.option("--max-pages", default=None, type=int, help="Limit number of API pages to fetch.")
-def votes(max_pages: int | None):
-    """Fetch and store votes from eduskunta API."""
-    asyncio.run(_ingest_votes(max_pages))
+async def _ingest_speeches(query: str, max_results: int = 100, start_from: int = 0) -> dict:
+    """Ingest täysistuntopuheenvuorot (floor speeches) via the new eduskunta search API."""
+    client = EduskuntaClient()
+    click.echo(f"Searching speeches for {query!r}...")
+    data = await client.search_speeches(query, max_results=max_results, start_from=start_from)
+    results = data.get("results", [])
+    total = data.get("searchMetadata", {}).get("totalResultCount", len(results))
+    click.echo(f"Found {total} speeches, processing {len(results)}.")
+
+    engine, async_session = await _get_session()
+    async with async_session() as session:
+        stored = 0
+        skipped = 0
+        for r in results:
+            puh = r.get("puheenvuoro") or {}
+            text = (puh.get("puheenvuoro") or "").strip()
+            if not text:
+                skipped += 1
+                continue
+            puhuja = puh.get("puhuja") or {}
+            person_id = str(puhuja.get("henkilonro", "") or "") or None
+            rep = None
+            party = None
+            if person_id:
+                res = await session.execute(
+                    select(Representative).where(Representative.person_id == person_id).limit(1)
+                )
+                rep = res.scalar_one_or_none()
+            if rep and rep.party_id:
+                party = rep.party
+            if not party:
+                party = await _find_party(session, (puhuja.get("lisatieto") or "").strip())
+
+            speech_id = puh.get("id") or r.get("id")
+            tunnus_fi = (puh.get("tunnus") or {}).get("fi", "")
+            url = f"https://www.eduskunta.fi/taysistunto/poytakirja/{tunnus_fi}"
+            title = (
+                f"Puheenvuoro {(puh.get('valtiopaiva') or '')} "
+                f"{(puhuja.get('etunimi', '') + ' ' + puhuja.get('sukunimi', '')).strip()}"
+            ).strip()
+            from datetime import datetime
+
+            published = None
+            try:
+                published = datetime.fromisoformat(puh.get("aloitushetki"))
+            except Exception:
+                pass
+
+            ok = await _store_document(
+                session,
+                source_type=SourceType.API,
+                url=f"{client.search_url}/puheenvuoro/{speech_id}" if speech_id else url,
+                title=title,
+                text=text,
+                content_type=ContentType.PUHEENVUORO,
+                party_id=party.id if party else (rep.party_id if rep else None),
+                representative_id=rep.id if rep else None,
+                published_at=published,
+                metadata={
+                    "speech_id": speech_id,
+                    "valtiopaiva": puh.get("valtiopaiva"),
+                    "taysistunto": puh.get("taysistuntonumero"),
+                    "asia": (puh.get("asia") or {}).get("fi", {}).get("nimeketeksti"),
+                },
+            )
+            if ok:
+                stored += 1
+            else:
+                skipped += 1
+        await session.commit()
+        click.echo(f"Stored {stored} speeches, skipped {skipped}.")
+    await engine.dispose()
+    return {"stored": stored, "skipped": skipped, "total": total}
+
+
+async def _ingest_questions(
+    max_results: int = 100, start_from: int = 0, valtiopaiva: str | None = None
+) -> dict:
+    """Ingest kirjalliset kysymykset (KK) via the new eduskunta search API."""
+    client = EduskuntaClient()
+    click.echo("Listing written questions (KK)...")
+    data = await client.search_written_questions(
+        max_results=max_results, start_from=start_from, valtiopaiva=valtiopaiva
+    )
+    results = data.get("results", [])
+    total = data.get("searchMetadata", {}).get("totalResultCount", len(results))
+    click.echo(f"Found {total} written questions, processing {len(results)}.")
+
+    engine, async_session = await _get_session()
+    async with async_session() as session:
+        stored = 0
+        skipped = 0
+        for r in results:
+            vpa = r.get("valtiopaivaasia") or {}
+            tunnus = vpa.get("eduskuntatunnus") or r.get("id")
+            if isinstance(tunnus, dict):
+                tunnus = tunnus.get("fi") or tunnus.get("sv")
+            if not tunnus:
+                skipped += 1
+                continue
+            title = (vpa.get("nimeke") or {}).get("fi") or tunnus
+            xml = await client.fetch_document_xml(tunnus)
+            text = _strip_html(xml) if xml else ""
+            if not text:
+                skipped += 1
+                continue
+            first_signer = vpa.get("ensimmainenAllekirjoittaja") or {}
+            signer_name = " ".join(
+                p for p in [first_signer.get("etunimi"), first_signer.get("sukunimi")] if p
+            )
+            rep = None
+            if signer_name:
+                parts = signer_name.split(" ", 1)
+                res = await session.execute(
+                    select(Representative).where(
+                        Representative.first_name == (parts[1] if len(parts) > 1 else parts[0]),
+                        Representative.last_name == (parts[0] if len(parts) > 1 else ""),
+                    ).limit(1)
+                )
+                rep = res.scalar_one_or_none()
+            from datetime import datetime
+
+            published = None
+            try:
+                published = datetime.fromisoformat((vpa.get("laadintapvm") or {}).get("fi") or "")
+            except Exception:
+                pass
+            ok = await _store_document(
+                session,
+                source_type=SourceType.API,
+                url=f"https://www.eduskunta.fi/valtiopaivaasiat/{tunnus.replace(' ', '%20')}",
+                title=f"{tunnus}: {title}"[:500],
+                text=text,
+                content_type=ContentType.KIRJALLINEN_KYSYMYS,
+                party_id=rep.party_id if rep else None,
+                representative_id=rep.id if rep else None,
+                published_at=published,
+                metadata={"eduskuntatunnus": tunnus, "signer": signer_name},
+            )
+            if ok:
+                stored += 1
+            else:
+                skipped += 1
+        await session.commit()
+        click.echo(f"Stored {stored} written questions, skipped {skipped}.")
+    await engine.dispose()
+    return {"stored": stored, "skipped": skipped, "total": total}
+
+
+async def _ingest_candidates(year: int = 2023) -> dict:
+    """Ingest election candidates (ehdokkaat) from Tilastokeskus PxWeb."""
+    client = TilastokeskusClient()
+    click.echo(f"Fetching candidates for eduskuntavaalit {year} from Tilastokeskus...")
+    candidates = await client.fetch_candidates()
+    click.echo(f"Fetched {len(candidates)} candidates.")
+
+    engine, async_session = await _get_session()
+    async with async_session() as session:
+        election = await session.execute(
+            select(Election).where(
+                Election.year == year, Election.election_type == ElectionType.EDUSKUNTAVAALIT
+            )
+        )
+        election = election.scalar_one_or_none()
+        if not election:
+            election = Election(
+                year=year,
+                election_type=ElectionType.EDUSKUNTAVAALIT,
+                name=f"Eduskuntavaalit {year}",
+                source_url="https://pxdata.stat.fi/PxWeb/api/v1/fi/StatFin/evaa/13t3.px",
+            )
+            session.add(election)
+            await session.flush()
+
+        added = 0
+        skipped = 0
+        for c in candidates:
+            party = await _find_party(session, c.get("party_abbr") or "")
+            stmt = pg_insert(Candidate).values(
+                election_id=election.id,
+                party_id=party.id if party else None,
+                candidate_number=c["candidate_number"],
+                first_name=c["first_name"],
+                last_name=c["last_name"],
+                constituency=c.get("constituency"),
+                votes=c.get("votes"),
+                vote_share=c.get("vote_share"),
+                comparison_number=c.get("comparison_number"),
+                elected=bool(c.get("elected")),
+            )
+            stmt = stmt.on_conflict_do_nothing(
+                index_elements=["election_id", "candidate_number"],
+                index_where=Candidate.candidate_number.isnot(None),
+            )
+            result = await session.execute(stmt)
+            if result.rowcount:
+                added += 1
+            else:
+                skipped += 1
+        await session.commit()
+        click.echo(f"Added {added} candidates, skipped {skipped}.")
+    await engine.dispose()
+    return {"added": added, "skipped": skipped}
 
 
 async def _ingest_pdf(url: str, party_abbr: str | None = None, title_override: str | None = None):
+    validate_public_url(url)
     click.echo(f"Downloading PDF {url}...")
     content = await fetch_and_extract_pdf(url)
     if not content:
@@ -198,25 +554,16 @@ async def _ingest_pdf(url: str, party_abbr: str | None = None, title_override: s
         if party_abbr:
             party = await _find_party(session, party_abbr)
 
-        source = Source(
+        await _store_document(
+            session,
             source_type=SourceType.PDF,
             url=url,
             title=title,
-            status=SourceStatus.INDEXED,
-            party_id=party.id if party else None,
-        )
-        session.add(source)
-        await session.flush()
-
-        doc = Document(
-            source_id=source.id,
-            title=title,
-            content_text=content["text"],
+            text=content["text"],
             content_type=ContentType.MUU,
             party_id=party.id if party else None,
-            language="fi",
+            metadata={"pages": content.get("pages")},
         )
-        session.add(doc)
         await session.commit()
         click.echo(f"Stored PDF document: {title}")
 
@@ -228,6 +575,7 @@ async def _ingest_url(url: str, party_abbr: str | None = None):
         await _ingest_pdf(url, party_abbr)
         return
 
+    validate_public_url(url)
     click.echo(f"Fetching {url}...")
     content = await fetch_and_extract(url)
     if not content:
@@ -238,53 +586,359 @@ async def _ingest_url(url: str, party_abbr: str | None = None):
 
     engine, async_session = await _get_session()
     async with async_session() as session:
-        # Find party if specified
         party = None
         if party_abbr:
             party = await _find_party(session, party_abbr)
 
-        # Create source
-        source = Source(
+        await _store_document(
+            session,
             source_type=SourceType.WEBSITE,
             url=url,
             title=content["title"],
-            status=SourceStatus.INDEXED,
-            party_id=party.id if party else None,
-        )
-        session.add(source)
-        await session.flush()
-
-        # Create document
-        doc = Document(
-            source_id=source.id,
-            title=content["title"],
-            content_text=content["text"],
+            text=content["text"],
             content_type=ContentType.MUU,
             party_id=party.id if party else None,
-            language="fi",
         )
-        session.add(doc)
         await session.commit()
         click.echo(f"Stored document: {content['title']}")
 
     await engine.dispose()
 
 
+async def _ingest_crawl(
+    seed_url: str, party_abbr: str | None = None, depth: int = 2,
+    max_pages: int = 50, use_llm: bool = False,
+):
+    from vaalikone.ingest.connectors.crawler import crawl_site
+
+    validate_public_url(seed_url)
+
+    async def on_found(url, title, chars):
+        click.echo(f"  Found: {title} ({chars:,} chars)")
+
+    llm_txt = "on" if use_llm else "off"
+    click.echo(f"Crawling {seed_url} (depth={depth}, max={max_pages}, llm={llm_txt})...")
+    pages = await crawl_site(
+        seed_url,
+        max_depth=depth,
+        max_pages=max_pages,
+        use_llm_filter=use_llm,
+        callback=on_found,
+    )
+
+    if not pages:
+        click.echo("No relevant pages found.")
+        return
+
+    engine, async_session = await _get_session()
+    async with async_session() as session:
+        party = None
+        if party_abbr:
+            party = await _find_party(session, party_abbr)
+
+        stored = 0
+        skipped = 0
+        for page in pages:
+            ok = await _store_document(
+                session,
+                source_type=SourceType.WEBSITE,
+                url=page["url"],
+                title=page["title"],
+                text=page["text"],
+                content_type=ContentType.MUU,
+                party_id=party.id if party else None,
+            )
+            if ok:
+                stored += 1
+            else:
+                click.echo(f"  Skip (exists): {page['url']}")
+                skipped += 1
+        await session.commit()
+        click.echo(
+            f"\nCrawled {len(pages)} pages, stored {stored} new, skipped {skipped}."
+        )
+
+    await engine.dispose()
+
+
+async def _ingest_embed(model: str | None = None, force: bool = False) -> dict:
+    from vaalikone.ingest.pipeline import process_all_documents
+
+    settings = get_settings()
+    embed_model = model or settings.DEFAULT_EMBED_MODEL
+
+    engine, async_session = await _get_session()
+    async with async_session() as session:
+        click.echo(f"Embedding documents with {embed_model}...")
+        n_docs, n_chunks = await process_all_documents(
+            session, embed_model=embed_model, force=force
+        )
+        click.echo(f"\nProcessed {n_docs} documents, {n_chunks} chunks total.")
+    await engine.dispose()
+    return {"documents": n_docs, "chunks": n_chunks}
+
+
+KIND_TO_CONTENT_TYPE = {
+    "vaaliohjelma": ContentType.VAALIOHJELMA,
+    "puolueohjelma": ContentType.PUOLUEOHJELMA,
+    "varjobudjetti": ContentType.VARJOBUDJETTI,
+}
+
+
+def _load_sources_yaml(path: str = "config/sources.yaml") -> list[dict]:
+    import yaml
+
+    with open(path) as f:
+        data = yaml.safe_load(f)
+    return data.get("sources", []) if data else []
+
+
+async def _ingest_programs(party_filter: str | None = None, kind_filter: str | None = None) -> dict:
+    """Ingest all party programs/shadow budgets listed in config/sources.yaml."""
+    entries = _load_sources_yaml()
+    if party_filter:
+        entries = [e for e in entries if e.get("party", "").upper() == party_filter.upper()]
+    if kind_filter:
+        entries = [e for e in entries if e.get("kind") == kind_filter]
+
+    click.echo(f"Ingesting {len(entries)} entries from config/sources.yaml...")
+    stats = {"stored": 0, "skipped": 0, "failed": 0}
+
+    for entry in entries:
+        party_abbr = entry.get("party", "")
+        kind = entry.get("kind", "muu")
+        url = entry.get("url", "")
+        title = entry.get("title") or url
+        stype = entry.get("type", "web")
+        content_type = KIND_TO_CONTENT_TYPE.get(kind, ContentType.MUU)
+        meta = {"kind": kind, "program_source": "config/sources.yaml"}
+
+        try:
+            validate_public_url(url)
+            engine, async_session = await _get_session()
+            async with async_session() as session:
+                party = await _find_party(session, party_abbr)
+                if not party:
+                    click.echo(f"  [skip] unknown party {party_abbr}: {title}")
+                    stats["skipped"] += 1
+                    await engine.dispose()
+                    continue
+
+                if stype == "pdf" or url.lower().endswith(".pdf"):
+                    content = None
+                    for attempt in range(3):
+                        try:
+                            content = await fetch_and_extract_pdf(url)
+                            break
+                        except Exception as e:
+                            if "429" in str(e) and attempt < 2:
+                                await asyncio.sleep(5 * (attempt + 1))
+                                continue
+                            raise
+                    if not content:
+                        raise ValueError("PDF text extraction failed")
+                    text, pages = content["text"], content.get("pages")
+                    meta["pages"] = pages
+                    src_type = SourceType.PDF
+                elif stype == "crawl":
+                    from vaalikone.ingest.connectors.crawler import crawl_site
+
+                    pages_list = await crawl_site(
+                        url,
+                        max_depth=entry.get("depth", 1),
+                        max_pages=entry.get("max_pages", 20),
+                    )
+                    stored = 0
+                    for page in pages_list:
+                        ok = await _store_document(
+                            session,
+                            source_type=SourceType.WEBSITE,
+                            url=page["url"],
+                            title=page["title"],
+                            text=page["text"],
+                            content_type=content_type,
+                            party_id=party.id,
+                            metadata={**meta, "seed_url": url},
+                        )
+                        if ok:
+                            stored += 1
+                    await session.commit()
+                    await engine.dispose()
+                    click.echo(f"  [crawl] {party_abbr} {title}: {stored} sivua")
+                    stats["stored"] += stored
+                    continue
+                else:
+                    content = None
+                    for attempt in range(3):
+                        try:
+                            content = await fetch_and_extract(url)
+                            break
+                        except Exception as e:
+                            if "429" in str(e) and attempt < 2:
+                                await asyncio.sleep(5 * (attempt + 1))
+                                continue
+                            raise
+                    if not content:
+                        raise ValueError("web text extraction failed")
+                    text = content["text"]
+                    src_type = SourceType.WEBSITE
+
+                ok = await _store_document(
+                    session,
+                    source_type=src_type,
+                    url=url,
+                    title=title,
+                    text=text,
+                    content_type=content_type,
+                    party_id=party.id,
+                    metadata=meta,
+                )
+                await session.commit()
+                if ok:
+                    click.echo(f"  [ok] {party_abbr} {kind}: {title} ({len(text):,} chars)")
+                    stats["stored"] += 1
+                else:
+                    click.echo(f"  [skip exists] {party_abbr}: {title}")
+                    stats["skipped"] += 1
+            await engine.dispose()
+        except Exception as e:
+            click.echo(f"  [fail] {party_abbr} {title}: {type(e).__name__}: {str(e)[:100]}")
+            stats["failed"] += 1
+
+    click.echo(
+        f"\nDone: {stats['stored']} stored, {stats['skipped']} skipped, "
+        f"{stats['failed']} failed."
+    )
+    return stats
+
+
+@click.group()
+def ingest():
+    """Ingest data from various sources."""
+    pass
+
+
+@ingest.command(name="programs")
+@click.option("--party", default=None, help="Only one party (e.g. SDP)")
+@click.option(
+    "--kind", default=None,
+    type=click.Choice(["vaaliohjelma", "puolueohjelma", "varjobudjetti"]),
+)
+@click.option("--queue", "queue", is_flag=True, help="Run as background Celery task")
+def programs(party: str | None, kind: str | None, queue: bool):
+    """Ingest all party programs and shadow budgets from config/sources.yaml."""
+    if queue:
+        _enqueue("ingest_programs_task", party_filter=party, kind_filter=kind)
+        return
+    asyncio.run(_ingest_programs(party, kind))
+
+
+@ingest.command()
+@click.option("--queue", "queue", is_flag=True, help="Run as background Celery task")
+def representatives(queue: bool):
+    """Fetch and store representatives from eduskunta API."""
+    if queue:
+        _enqueue("ingest_representatives_task")
+        return
+    asyncio.run(_ingest_representatives())
+
+
+@ingest.command()
+@click.option("--max-pages", default=None, type=int, help="Limit number of API pages to fetch.")
+@click.option("--queue", "queue", is_flag=True, help="Run as background Celery task")
+def votes(max_pages: int | None, queue: bool):
+    """Fetch and store votes from eduskunta API (with subject titles)."""
+    if queue:
+        _enqueue("ingest_votes_task", max_pages=max_pages)
+        return
+    asyncio.run(_ingest_votes(max_pages))
+
+
+@ingest.command(name="vote-subjects")
+@click.option("--max-pages", default=None, type=int, help="Limit number of API pages to fetch.")
+@click.option("--queue", "queue", is_flag=True, help="Run as background Celery task")
+def vote_subjects(max_pages: int | None, queue: bool):
+    """Backfill vote subject titles (äänestysten otsikot) for existing votes."""
+    if queue:
+        _enqueue("ingest_vote_subjects_task", max_pages=max_pages)
+        return
+    asyncio.run(_ingest_vote_subjects(max_pages))
+
+
+@ingest.command()
+@click.argument("query")
+@click.option("--max-results", default=100, type=int, help="How many speeches to fetch.")
+@click.option("--start-from", default=0, type=int, help="Offset into search results.")
+@click.option("--queue", "queue", is_flag=True, help="Run as background Celery task")
+def speeches(query: str, max_results: int, start_from: int, queue: bool):
+    """Ingest täysistuntopuheenvuorot (floor speeches) matching a text query."""
+    if queue:
+        _enqueue(
+            "ingest_speeches_task",
+            query=query, max_results=max_results, start_from=start_from,
+        )
+        return
+    asyncio.run(_ingest_speeches(query, max_results, start_from))
+
+
+@ingest.command()
+@click.option("--max-results", default=100, type=int, help="How many questions to fetch.")
+@click.option("--start-from", default=0, type=int, help="Offset into search results.")
+@click.option(
+    "--valtiopaiva", default=None, help="Filter by session (e.g. '2023 vp')."
+)
+@click.option("--queue", "queue", is_flag=True, help="Run as background Celery task")
+def questions(max_results: int, start_from: int, valtiopaiva: str | None, queue: bool):
+    """Ingest kirjalliset kysymykset (written questions, KK)."""
+    if queue:
+        _enqueue(
+            "ingest_questions_task",
+            max_results=max_results, start_from=start_from, valtiopaiva=valtiopaiva,
+        )
+        return
+    asyncio.run(_ingest_questions(max_results, start_from, valtiopaiva))
+
+
+@ingest.command()
+@click.option("--year", default=2023, type=int, help="Election year (default 2023).")
+@click.option("--queue", "queue", is_flag=True, help="Run as background Celery task")
+def candidates(year: int, queue: bool):
+    """Ingest election candidates (ehdokkaat) from Tilastokeskus."""
+    if queue:
+        _enqueue("ingest_candidates_task", year=year)
+        return
+    asyncio.run(_ingest_candidates(year))
+
+
 @ingest.command()
 @click.argument("url")
 @click.option("--party", default=None, help="Party abbreviation (e.g. SDP)")
-def url(url: str, party: str | None):
+@click.option("--queue", "queue", is_flag=True, help="Run as background Celery task")
+def url(url: str, party: str | None, queue: bool):
     """Ingest content from a URL."""
-    asyncio.run(_ingest_url(url, party))
+    if queue:
+        _enqueue("ingest_url_task", url=url, party=party)
+        return
+    try:
+        asyncio.run(_ingest_url(url, party))
+    except UnsafeURLError as e:
+        raise click.ClickException(f"URL rejected (SSRF protection): {e}")
 
 
 @ingest.command()
 @click.argument("url")
 @click.option("--party", default=None, help="Party abbreviation (e.g. SDP)")
 @click.option("--title", default=None, help="Override document title")
-def pdf(url: str, party: str | None, title: str | None):
+@click.option("--queue", "queue", is_flag=True, help="Run as background Celery task")
+def pdf(url: str, party: str | None, title: str | None, queue: bool):
     """Ingest a PDF document from URL."""
-    asyncio.run(_ingest_pdf(url, party, title))
+    if queue:
+        _enqueue("ingest_pdf_task", url=url, party=party, title=title)
+        return
+    try:
+        asyncio.run(_ingest_pdf(url, party, title))
+    except UnsafeURLError as e:
+        raise click.ClickException(f"URL rejected (SSRF protection): {e}")
 
 
 @ingest.command(name="pdf-file")
@@ -293,7 +947,6 @@ def pdf(url: str, party: str | None, title: str | None):
 @click.option("--title", default=None, help="Override document title")
 def pdf_file(file_path: str, party: str | None, title: str | None):
     """Ingest a local PDF file."""
-    from vaalikone.ingest.connectors.pdf import extract_pdf_bytes
 
     async def _run():
         with open(file_path, "rb") as f:
@@ -305,7 +958,10 @@ def pdf_file(file_path: str, party: str | None, title: str | None):
             return
 
         doc_title = title or content["title"]
-        click.echo(f"Extracted: {doc_title} ({len(content['text'])} chars, {content['pages']} pages)")
+        click.echo(
+            f"Extracted: {doc_title} "
+            f"({len(content['text'])} chars, {content['pages']} pages)"
+        )
 
         engine, async_session = await _get_session()
         async with async_session() as session:
@@ -313,25 +969,16 @@ def pdf_file(file_path: str, party: str | None, title: str | None):
             if party:
                 party_obj = await _find_party(session, party)
 
-            source = Source(
+            await _store_document(
+                session,
                 source_type=SourceType.PDF,
                 url=file_path,
                 title=doc_title,
-                status=SourceStatus.INDEXED,
-                party_id=party_obj.id if party_obj else None,
-            )
-            session.add(source)
-            await session.flush()
-
-            doc = Document(
-                source_id=source.id,
-                title=doc_title,
-                content_text=content["text"],
+                text=content["text"],
                 content_type=ContentType.MUU,
                 party_id=party_obj.id if party_obj else None,
-                language="fi",
+                metadata={"pages": content.get("pages")},
             )
-            session.add(doc)
             await session.commit()
             click.echo(f"Stored PDF document: {doc_title}")
 
@@ -346,93 +993,28 @@ def pdf_file(file_path: str, party: str | None, title: str | None):
 @click.option("--depth", default=2, help="Max link depth to follow (default 2)")
 @click.option("--max-pages", default=50, help="Max pages to crawl (default 50)")
 @click.option("--use-llm", is_flag=True, help="Use local LLM for relevance filtering")
-def crawl(seed_url: str, party: str | None, depth: int, max_pages: int, use_llm: bool):
+@click.option("--queue", "queue", is_flag=True, help="Run as background Celery task")
+def crawl(seed_url: str, party: str | None, depth: int, max_pages: int, use_llm: bool, queue: bool):
     """Crawl a website recursively, indexing political content."""
-    from vaalikone.ingest.connectors.crawler import crawl_site
-
-    async def _run():
-        engine, async_session = await _get_session()
-
-        async def on_found(url, title, chars):
-            click.echo(f"  Found: {title} ({chars:,} chars)")
-
-        click.echo(f"Crawling {seed_url} (depth={depth}, max={max_pages}, llm={'on' if use_llm else 'off'})...")
-        pages = await crawl_site(
-            seed_url,
-            max_depth=depth,
-            max_pages=max_pages,
-            use_llm_filter=use_llm,
-            callback=on_found,
+    if queue:
+        _enqueue(
+            "ingest_crawl_task", seed_url=seed_url, party=party,
+            depth=depth, max_pages=max_pages, use_llm=use_llm,
         )
-
-        if not pages:
-            click.echo("No relevant pages found.")
-            await engine.dispose()
-            return
-
-        async with async_session() as session:
-            party_obj = None
-            if party:
-                party_obj = await _find_party(session, party)
-
-            stored = 0
-            for page in pages:
-                # Check if URL already indexed
-                existing = await session.execute(
-                    select(Source).where(Source.url == page["url"])
-                )
-                if existing.scalars().first():
-                    click.echo(f"  Skip (exists): {page['url']}")
-                    continue
-
-                source = Source(
-                    source_type=SourceType.WEBSITE,
-                    url=page["url"],
-                    title=page["title"],
-                    status=SourceStatus.INDEXED,
-                    party_id=party_obj.id if party_obj else None,
-                )
-                session.add(source)
-                await session.flush()
-
-                doc = Document(
-                    source_id=source.id,
-                    title=page["title"],
-                    content_text=page["text"],
-                    content_type=ContentType.MUU,
-                    party_id=party_obj.id if party_obj else None,
-                    language="fi",
-                )
-                session.add(doc)
-                stored += 1
-
-            await session.commit()
-            click.echo(f"\nCrawled {len(pages)} pages, stored {stored} new documents.")
-
-        await engine.dispose()
-
-    asyncio.run(_run())
+        return
+    try:
+        asyncio.run(_ingest_crawl(seed_url, party, depth, max_pages, use_llm))
+    except UnsafeURLError as e:
+        raise click.ClickException(f"URL rejected (SSRF protection): {e}")
 
 
 @ingest.command()
 @click.option("--model", default=None, help="Embedding model (default from config)")
 @click.option("--force", is_flag=True, help="Re-embed all documents")
-def embed(model: str | None, force: bool):
+@click.option("--queue", "queue", is_flag=True, help="Run as background Celery task")
+def embed(model: str | None, force: bool, queue: bool):
     """Generate embeddings for all documents."""
-
-    async def _run():
-        from vaalikone.ingest.pipeline import process_all_documents
-
-        settings = get_settings()
-        embed_model = model or settings.DEFAULT_EMBED_MODEL
-
-        engine, async_session = await _get_session()
-        async with async_session() as session:
-            click.echo(f"Embedding documents with {embed_model}...")
-            n_docs, n_chunks = await process_all_documents(
-                session, embed_model=embed_model, force=force
-            )
-            click.echo(f"\nProcessed {n_docs} documents, {n_chunks} chunks total.")
-        await engine.dispose()
-
-    asyncio.run(_run())
+    if queue:
+        _enqueue("ingest_embed_task", model=model, force=force)
+        return
+    asyncio.run(_ingest_embed(model, force))

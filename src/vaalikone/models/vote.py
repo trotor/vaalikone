@@ -2,14 +2,14 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Text, Enum, ForeignKey
-from sqlalchemy.dialects.postgresql import UUID, TIMESTAMP
+from sqlalchemy import Enum, ForeignKey, Text
+from sqlalchemy.dialects.postgresql import TIMESTAMP, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from vaalikone.models.base import Base, UUIDMixin
 
 
-class VoteChoice(str, enum.Enum):
+class VoteChoice(enum.StrEnum):
     JAA = "jaa"
     EI = "ei"
     TYHJA = "tyhjä"
@@ -24,6 +24,7 @@ class Vote(UUIDMixin, Base):
     )
     session: Mapped[str | None] = mapped_column(Text)
     subject: Mapped[str | None] = mapped_column(Text)
+    subject_title: Mapped[str | None] = mapped_column(Text)
     vote: Mapped[VoteChoice] = mapped_column(Enum(VoteChoice, native_enum=False))
     voted_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
     document_url: Mapped[str | None] = mapped_column(Text)

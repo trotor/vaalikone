@@ -11,6 +11,8 @@ from urllib.parse import urljoin, urlparse
 import httpx
 import trafilatura
 
+from vaalikone.ingest.url_validation import UnsafeURLError, validate_public_url
+
 # Keywords that indicate political content (Finnish)
 POLITICAL_KEYWORDS = {
     "ohjelma", "vaaliohjelma", "puolueohjelma", "periaateohjelma", "politiikka",
@@ -103,6 +105,7 @@ async def crawl_site(
     Returns:
         List of {"url", "title", "text"} dicts for relevant pages
     """
+    validate_public_url(seed_url)
     visited = set()
     results = []
     queue = [(seed_url, 0)]  # (url, depth)
@@ -117,6 +120,12 @@ async def crawl_site(
             if normalized in visited:
                 continue
             visited.add(normalized)
+
+            # SSRF guard: skip links that are not public http(s) URLs
+            try:
+                validate_public_url(url)
+            except UnsafeURLError:
+                continue
 
             try:
                 resp = await client.get(url)

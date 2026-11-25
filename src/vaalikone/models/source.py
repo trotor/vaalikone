@@ -2,14 +2,14 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Text, Enum, ForeignKey
-from sqlalchemy.dialects.postgresql import JSONB, UUID, TIMESTAMP
+from sqlalchemy import Enum, ForeignKey, Text
+from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from vaalikone.models.base import Base, UUIDMixin
 
 
-class SourceType(str, enum.Enum):
+class SourceType(enum.StrEnum):
     WEBSITE = "website"
     PDF = "pdf"
     SOCIAL_MEDIA = "social_media"
@@ -17,7 +17,7 @@ class SourceType(str, enum.Enum):
     MANUAL = "manual"
 
 
-class SourceStatus(str, enum.Enum):
+class SourceStatus(enum.StrEnum):
     PENDING = "pending"
     INDEXED = "indexed"
     FAILED = "failed"

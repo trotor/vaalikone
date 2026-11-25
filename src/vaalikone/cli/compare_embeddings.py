@@ -12,7 +12,6 @@ from vaalikone.ingest.embedder import get_embedding
 from vaalikone.models.embedding import Embedding
 from vaalikone.query.hybrid_search import semantic_search
 
-
 TEST_QUERIES = [
     "metsäkeskus metsäpolitiikka",
     "verotus tuloverotus",
@@ -39,7 +38,7 @@ async def _compare(models: list[str]):
             .group_by(Embedding.model_name)
         )
         available = {row[0]: row[1] for row in result.all()}
-        click.echo(f"\nEmbeddings in database:")
+        click.echo("\nEmbeddings in database:")
         for model, count in available.items():
             click.echo(f"  {model}: {count} chunks")
 

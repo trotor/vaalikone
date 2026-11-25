@@ -8,11 +8,16 @@ Rakennettu kevään 2027 eduskuntavaaleja varten.
 
 - **16 puoluetta** — kaikki eduskuntapuolueet + pienpuolueet
 - **380+ dokumenttia** — vaaliohjelmat, varjobudjetit, politiikkaohjelmat (web + PDF)
+- **Täysistuntopuheenvuorot** — haettavissa uudesta `api.eduskunta.fi` -hausta (`vaalikone ingest speeches`)
+- **Kirjalliset kysymykset (KK)** — 41 900+ kysymystä (`vaalikone ingest questions`)
 - **2 677 kansanedustajaa** — eduskunnan avoin data vuodesta 1907
-- **183 710+ äänestystä** — kansanedustajien äänestyshistoria
-- **Hybrid-haku** — PostgreSQL full-text + semanttinen vektorihaku (pgvector)
-- **AI-chat** — kysele politiikasta luonnollisella kielellä (OpenAI / lokaali Ollama)
-- **Web UI** — selainpohjainen chat-käyttöliittymä
+- **183 710+ äänestystä äänestysotsikoilla** — `vaalikone ingest vote-subjects`
+- **2 424 ehdokasta eduskuntavaaleista 2023** — äänimäärät, valintatieto, vaalipiiri (Tilastokeskus)
+- **Hybrid-haku** — PostgreSQL full-text + ILIKE + pg_trgm + semanttinen vektorihaku
+- **AI-chat** — kysele politiikasta luonnollisella kielellä (OpenAI / lokaali Ollama), SSE-streaming
+- **Web UI** — chat tummalla/vaalealla teemalla, historia, puoluevärit, streaming
+- **Taustatyöt** — Celery + Redis (`--queue`), worker konttina docker composessa
+- **API-avainauth** — `VAALIKONE_API_KEY` + `X-API-Key` -header, malli-allowlist, SSRF-suoja
 - **Offline-tuki** — toimii ilman nettiä lokaalien mallien kanssa
 
 ## Järjestelmävaatimukset
@@ -102,8 +107,25 @@ vaalikone seed parties
 # Kansanedustajat eduskunnan avoimesta datasta
 vaalikone ingest representatives
 
-# Äänestyksiä (50 sivua ~ 5 000 ääntä, nopea)
+# Äänestyksiä (50 sivua ~ 5 000 ääntä, nopea) — otsikot tulevat mukaan
 vaalikone ingest votes --max-pages 50
+vaalikone ingest vote-subjects --max-pages 50   # Täyttää äänestysten otsikot jälkikäteen
+
+# Täysistuntopuheenvuorot ja kirjalliset kysymykset (uusi api.eduskunta.fi)
+vaalikone ingest speeches ilmastonmuutos --max-results 100
+vaalikone ingest questions --max-results 100 --valtiopaiva "2023 vp"
+
+# Ehdokkaat eduskuntavaaleista 2023 (Tilastokeskus PxWeb)
+vaalikone ingest candidates --year 2023
+
+# Kaikkien puolueiden vaaliohjelmat, puolueohjelmat ja varjobudjetit
+# (osoitteet konfiguroitu: config/sources.yaml)
+vaalikone ingest programs                          # kaikki
+vaalikone ingest programs --party SDP              # vain yksi puolue
+vaalikone ingest programs --kind varjobudjetti     # vain varjobudjetit
+
+# Kaikki komennot voi myös jonottaa taustalle (--queue, vaatii workerin):
+vaalikone ingest url "https://..." --party SDP --queue
 
 # Puolueohjelmia verkosta
 vaalikone ingest url "https://www.kokoomus.fi/periaateohjelma/" --party KOK
@@ -160,7 +182,12 @@ Käynnistä palvelin ja avaa http://localhost:8003. Chat-käyttöliittymä tunni
 # Datan syöttö
 vaalikone seed parties                          # Syötä puolueet
 vaalikone ingest representatives                # Hae kansanedustajat
-vaalikone ingest votes --max-pages 100          # Hae äänestyksiä
+vaalikone ingest votes --max-pages 100          # Hae äänestyksiä (otsikoilla)
+vaalikone ingest vote-subjects                  # Äänestysotsikot jälkikäteen
+vaalikone ingest speeches ilmastonmuutos        # Täysistuntopuheenvuorot
+vaalikone ingest questions --max-results 100   # Kirjalliset kysymykset
+vaalikone ingest candidates --year 2023         # Ehdokkaat 2023
+vaalikone ingest programs                       # Vaaliohjelmat + varjobudjetit (config/sources.yaml)
 vaalikone ingest url <URL> --party SDP          # Indeksoi web-sivu
 vaalikone ingest pdf <URL> --party PS           # Indeksoi PDF
 vaalikone ingest crawl <URL> --party VIHR --depth 2  # Rekursiivinen crawlaus
@@ -191,10 +218,23 @@ GET  /api/v1/documents          Dokumentit (?party=VIHR)
 GET  /api/v1/sources            Datalähteet
 GET  /api/v1/search?q=...       Tekstihaku (?party=KOK&limit=10)
 POST /api/v1/chat               AI-chat (JSON body)
+POST /api/v1/chat/stream        AI-chat SSE-streamina (chunk/done -eventit)
 POST /api/v1/suggest            Jatkokysymysehdotukset
 GET  /api/v1/suggestions        Etusivun kysymysehdotukset
 GET  /api/v1/connectivity       Palveluiden tila (OpenAI, Ollama)
+GET  /api/v1/elections          Vaalit
+GET  /api/v1/elections/{id}/candidates  Ehdokkaat (?party=SDP&elected_only=true&q=...)
+GET  /api/v1/elections/{id}/stats       Puoluekohtaiset tilastot vaaleista
+GET  /api/v1/representatives/{id}/votes  Kansanedustajan äänestyshistoria otsikoilla
 ```
+
+### Tietoturva
+
+Kun `VAALIKONE_API_KEY` on asetettu, kaikki `/api/v1/*`-päätteet vaativat
+`X-API-Key`-headerin. Chat-mallit rajataan `CHAT_ALLOWED_MODELS`-allowlistillä
+(pilkulla erotettu, `__text_only__` sallittu aina). URL-connectoreissa on
+SSRF-suoja (yksityiset IPt, localhost ja muut kuin http/https -skeemat estetään).
+Docker Compose -portit on sidottu 127.0.0.1:een ja kontit ajavat non-root-käyttäjänä.
 
 #### Chat API -esimerkki
 

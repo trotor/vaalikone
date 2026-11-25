@@ -2,15 +2,17 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Text, Enum, ForeignKey
-from sqlalchemy.dialects.postgresql import JSONB, UUID, TIMESTAMP
+from sqlalchemy import Enum, ForeignKey, Text
+from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from vaalikone.models.base import Base, UUIDMixin
 
 
-class ContentType(str, enum.Enum):
+class ContentType(enum.StrEnum):
     VAALIOHJELMA = "vaaliohjelma"
+    PUOLUEOHJELMA = "puolueohjelma"
+    VARJOBUDJETTI = "varjobudjetti"
     BLOGIKIRJOITUS = "blogikirjoitus"
     SOME_POSTAUS = "some_postaus"
     PUHEENVUORO = "puheenvuoro"

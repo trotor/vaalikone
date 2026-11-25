@@ -33,7 +33,8 @@ async def _list_sources(party_filter: str | None):
         click.echo("-" * 100)
         for s in sources:
             click.echo(
-                f"{str(s.id):<38} {s.source_type.value:<14} {s.status.value:<10} {s.title or s.url or '-'}"
+                f"{str(s.id):<38} {s.source_type.value:<14} "
+                f"{s.status.value:<10} {s.title or s.url or '-'}"
             )
         click.echo(f"\nTotal: {len(sources)} sources")
 

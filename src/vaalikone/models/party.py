@@ -1,4 +1,4 @@
-from sqlalchemy import Text, Integer
+from sqlalchemy import Integer, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from vaalikone.models.base import Base, UUIDMixin

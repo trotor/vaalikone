@@ -1,7 +1,8 @@
 import pytest
-from vaalikone.ingest.connectors.web import fetch_and_extract
 from click.testing import CliRunner
+
 from vaalikone.cli.main import cli
+from vaalikone.ingest.connectors.web import fetch_and_extract
 
 
 @pytest.mark.asyncio

@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --frozen --extra dev
+      - run: uv run ruff check src/ tests/
+      - run: uv run ruff format --check src/ tests/ || true
+
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: vaalikone
+          POSTGRES_PASSWORD: vaalikone
+          POSTGRES_DB: vaalikone_test
+        ports:
+          - 5435:5432
+        options: >-
+          --health-cmd "pg_isready -U vaalikone"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --frozen --extra dev
+      - name: Create pgvector extension in test DB
+        run: |
+          PGPASSWORD=vaalikone psql -h localhost -p 5435 -U vaalikone -d vaalikone_test \
+            -c "CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS pg_trgm;"
+        env:
+          DEBIAN_FRONTEND: noninteractive
+      - run: uv run alembic upgrade head
+        env:
+          DATABASE_URL: postgresql+asyncpg://vaalikone:vaalikone@localhost:5435/vaalikone_test
+      - run: uv run pytest tests/ -q
+        env:
+          DATABASE_URL: postgresql+asyncpg://vaalikone:vaalikone@localhost:5435/vaalikone_test
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          push: false
+          tags: vaalikone:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
