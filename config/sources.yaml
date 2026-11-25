@@ -15,6 +15,11 @@ sources:
     type: pdf
     url: "https://www.kokoomus.fi/wp-content/uploads/2023/02/vaaliohjelma_2023_11.pdf"
     title: "Kokoomuksen eduskuntavaaliohjelma 2023"
+  - party: KOK
+    kind: puolueohjelma
+    type: pdf
+    url: "https://www.kokoomus.fi/wp-content/uploads/2026/06/Tavoiteohjelma-HYVAKSYTTY.pdf"
+    title: "Kokoomuksen tavoiteohjelma 2026 (periaateohjelma)"
   - party: PS
     kind: vaaliohjelma
     type: web
