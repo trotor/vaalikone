@@ -13,6 +13,7 @@ class ContentType(enum.StrEnum):
     VAALIOHJELMA = "vaaliohjelma"
     PUOLUEOHJELMA = "puolueohjelma"
     VARJOBUDJETTI = "varjobudjetti"
+    HALLITUSOHJELMA = "hallitusohjelma"
     BLOGIKIRJOITUS = "blogikirjoitus"
     SOME_POSTAUS = "some_postaus"
     PUHEENVUORO = "puheenvuoro"

@@ -13,6 +13,22 @@ PXWEB_BASE = "https://pxdata.stat.fi/PxWeb/api/v1/fi/StatFin"
 # Eduskuntavaalit: ehdokkaiden äänimäärät ja vertausluku (2023)
 EDUSKUNTAVAALIT_EHDOKKAAT_TABLE = "evaa/13t3.px"
 
+# Kuntavaalit 2025: ehdokkaiden äänimäärä ja valintatieto per vaalipiiri
+KUNTAVAALIT_VAALIPIIRI_TABLES = {
+    "Helsinki": "kvaa/14uk.px",
+    "Uusimaa": "kvaa/14ux.px",
+    "Varsinais-Suomi": "kvaa/14uy.px",
+    "Satakunta": "kvaa/14uz.px",
+    "Häme": "kvaa/14v1.px",
+    "Pirkanmaa": "kvaa/14v2.px",
+    "Kaakkois-Suomi": "kvaa/14v3.px",
+    "Savo-Karjala": "kvaa/14v4.px",
+    "Vaasa": "kvaa/14v5.px",
+    "Keski-Suomi": "kvaa/14v6.px",
+    "Oulu": "kvaa/14v7.px",
+    "Lappi": "kvaa/14v8.px",
+}
+
 
 class TilastokeskusClient:
     def __init__(self, base_url: str = PXWEB_BASE):
@@ -144,5 +160,94 @@ class TilastokeskusClient:
                 "votes": int(votes) if votes is not None else None,
                 "vote_share": share,
                 "comparison_number": vluku,
+            })
+        return candidates
+
+    async def fetch_municipal_candidates(
+        self, table: str, constituency: str, year: str = "2025"
+    ) -> list[dict]:
+        """Kuntavaalien ehdokkaat yhdestä vaalipiiritaulusta.
+
+        Rakenne: Vuosi, Ehdokas ("Sukunimi Etunimi / PUOLUE / Kunta"),
+        Tiedot (äänimäärä yht, ennakkoäänet, osuus, valintatieto 1=valittu...).
+        """
+        meta = await self._get_json(table)
+        ehdokas = next(v for v in meta["variables"] if "ehdokas" in v["code"].lower())
+        tiedot = next(v for v in meta["variables"] if v["code"] == "contentscode")
+        time_var = next(v for v in meta["variables"] if v["code"].startswith("timeperiod"))
+
+        query = {
+            "query": [
+                {"code": time_var["code"], "selection": {"filter": "item", "values": [year]}},
+                {"code": ehdokas["code"],
+                 "selection": {"filter": "item", "values": ehdokas["values"]}},
+                {"code": "contentscode",
+                 "selection": {"filter": "item", "values": tiedot["values"]}},
+            ]
+        }
+        data = await self._post_query(table, query)
+
+        dims = data["dimension"]
+        sizes = data["size"]
+        values = data["value"]
+        codes = list(dims.keys())
+        idx = {c: i for i, c in enumerate(codes)}
+
+        def _position(code: str, value_code: str) -> int:
+            index = dims[code]["category"]["index"]
+            if isinstance(index, dict):
+                return index[value_code]
+            return index.index(value_code)
+
+        def value_at(coords: list[int]) -> float | None:
+            flat = 0
+            for c, s in zip(coords, sizes):
+                flat = flat * s + c
+            v = values[flat]
+            return None if v is None else float(v)
+
+        tiedot_labels = dims["contentscode"]["category"]["label"]
+
+        def _tieto_pos(keywords):
+            for code_val, lab in tiedot_labels.items():
+                if any(k in lab.lower() for k in keywords):
+                    return _position("contentscode", code_val)
+            raise ValueError(f"Tieto not found: {keywords}")
+
+        aanet_i = _tieto_pos(["änimäärä yhteensä", "aanimaara yhteensa"])
+        osuus_i = _tieto_pos(["osuus"])
+        valinta_i = _tieto_pos(["valintatieto"])
+
+        ehdokas_labels = dims[ehdokas["code"]]["category"]["label"]
+        ehdokas_index = dims[ehdokas["code"]]["category"]["index"]
+        n_ehdokas = sizes[idx[ehdokas["code"]]]
+
+        candidates = []
+        for e in range(n_ehdokas):
+            if isinstance(ehdokas_index, dict):
+                value_code = next(k for k, v in ehdokas_index.items() if v == e)
+            else:
+                value_code = ehdokas_index[e]
+            raw = ehdokas_labels[value_code]
+            parts = [p.strip() for p in raw.split("/")]
+            name = parts[0] if parts else raw
+            party = parts[1] if len(parts) > 1 else None
+            kunta = parts[2] if len(parts) > 2 else None
+            name_parts = name.split(" ", 1)
+            last_name = name_parts[0] if name_parts else name
+            first_name = name_parts[1] if len(name_parts) > 1 else ""
+            votes = value_at([0, e, aanet_i])
+            share = value_at([0, e, osuus_i])
+            valinta = value_at([0, e, valinta_i])
+            candidates.append({
+                "candidate_number": value_code,
+                "first_name": first_name,
+                "last_name": last_name,
+                "party_abbr": party,
+                "constituency": f"{constituency} / {kunta}" if kunta else constituency,
+                "elected": valinta == 1.0,
+                "votes": int(votes) if votes is not None else None,
+                "vote_share": share,
+                "comparison_number": None,
             })
         return candidates

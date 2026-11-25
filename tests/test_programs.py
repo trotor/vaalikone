@@ -5,7 +5,7 @@ from vaalikone.models.document import ContentType
 def test_sources_yaml_loads_and_covers_all_parties():
     entries = _load_sources_yaml()
     assert len(entries) >= 16
-    parties = {e["party"] for e in entries}
+    parties = {e.get("party", "") for e in entries}
     expected = {
         "SDP", "KOK", "PS", "KESK", "VIHR", "VAS", "RKP", "KD", "LIIK",
         "PIR", "EOP", "FP", "VKK", "SKP", "LIB", "SML",

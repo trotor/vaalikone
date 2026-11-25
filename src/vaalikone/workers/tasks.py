@@ -98,11 +98,11 @@ def ingest_questions_task(
 
 
 @app.task(bind=True, max_retries=2)
-def ingest_candidates_task(self, year: int = 2023):
+def ingest_candidates_task(self, year: int = 2023, election: str = "eduskuntavaalit"):
     from vaalikone.cli.ingest import _ingest_candidates
 
     try:
-        return asyncio.run(_ingest_candidates(year))
+        return asyncio.run(_ingest_candidates(year, election))
     except Exception as e:
         raise self.retry(exc=e, countdown=60)
 

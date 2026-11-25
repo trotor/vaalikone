@@ -481,30 +481,57 @@ async def _ingest_questions(
     return {"stored": stored, "skipped": skipped, "total": total}
 
 
-async def _ingest_candidates(year: int = 2023) -> dict:
+async def _ingest_candidates(year: int = 2023, election: str = "eduskuntavaalit") -> dict:
     """Ingest election candidates (ehdokkaat) from Tilastokeskus PxWeb."""
+    from vaalikone.ingest.connectors.tilastokeskus import (
+        EDUSKUNTAVAALIT_EHDOKKAAT_TABLE,
+        KUNTAVAALIT_VAALIPIIRI_TABLES,
+    )
+
     client = TilastokeskusClient()
-    click.echo(f"Fetching candidates for eduskuntavaalit {year} from Tilastokeskus...")
-    candidates = await client.fetch_candidates()
-    click.echo(f"Fetched {len(candidates)} candidates.")
+    etype = ElectionType(election)
+
+    if etype == ElectionType.KUNTAVAALIT:
+        click.echo(f"Fetching kuntavaalit {year} candidates per vaalipiiri...")
+        all_candidates = []
+        for vaalipiiri, table in KUNTAVAALIT_VAALIPIIRI_TABLES.items():
+            try:
+                cs = await client.fetch_municipal_candidates(
+                    table, vaalipiiri, year=str(year)
+                )
+                click.echo(f"  {vaalipiiri}: {len(cs)} ehdokasta")
+                all_candidates.extend(cs)
+            except Exception as e:
+                click.echo(f"  [fail] {vaalipiiri} ({table}): {type(e).__name__}: {e}")
+        candidates = all_candidates
+        source_url = "https://pxdata.stat.fi/PxWeb/api/v1/fi/StatFin/kvaa/"
+    else:
+        click.echo(f"Fetching {election} {year} candidates from Tilastokeskus...")
+        candidates = await client.fetch_candidates()
+        source_url = f"https://pxdata.stat.fi/PxWeb/api/v1/fi/StatFin/{EDUSKUNTAVAALIT_EHDOKKAAT_TABLE}"
+    click.echo(f"Fetched {len(candidates)} candidates total.")
 
     engine, async_session = await _get_session()
     async with async_session() as session:
-        election = await session.execute(
+        election_row = await session.execute(
             select(Election).where(
-                Election.year == year, Election.election_type == ElectionType.EDUSKUNTAVAALIT
+                Election.year == year, Election.election_type == etype
             )
         )
-        election = election.scalar_one_or_none()
-        if not election:
-            election = Election(
+        election_row = election_row.scalar_one_or_none()
+        if not election_row:
+            election_row = Election(
                 year=year,
-                election_type=ElectionType.EDUSKUNTAVAALIT,
-                name=f"Eduskuntavaalit {year}",
-                source_url="https://pxdata.stat.fi/PxWeb/api/v1/fi/StatFin/evaa/13t3.px",
+                election_type=etype,
+                name=(
+                    f"{'Kuntavaalit' if etype == ElectionType.KUNTAVAALIT else 'Eduskuntavaalit'}"
+                    f" {year}"
+                ),
+                source_url=source_url,
             )
-            session.add(election)
+            session.add(election_row)
             await session.flush()
+        election = election_row
 
         added = 0
         skipped = 0
@@ -682,6 +709,7 @@ KIND_TO_CONTENT_TYPE = {
     "vaaliohjelma": ContentType.VAALIOHJELMA,
     "puolueohjelma": ContentType.PUOLUEOHJELMA,
     "varjobudjetti": ContentType.VARJOBUDJETTI,
+    "hallitusohjelma": ContentType.HALLITUSOHJELMA,
 }
 
 
@@ -717,8 +745,8 @@ async def _ingest_programs(party_filter: str | None = None, kind_filter: str | N
             validate_public_url(url)
             engine, async_session = await _get_session()
             async with async_session() as session:
-                party = await _find_party(session, party_abbr)
-                if not party:
+                party = await _find_party(session, party_abbr) if party_abbr else None
+                if party_abbr and not party:
                     click.echo(f"  [skip] unknown party {party_abbr}: {title}")
                     stats["skipped"] += 1
                     await engine.dispose()
@@ -757,7 +785,7 @@ async def _ingest_programs(party_filter: str | None = None, kind_filter: str | N
                             title=page["title"],
                             text=page["text"],
                             content_type=content_type,
-                            party_id=party.id,
+                            party_id=party.id if party else None,
                             metadata={**meta, "seed_url": url},
                         )
                         if ok:
@@ -790,7 +818,7 @@ async def _ingest_programs(party_filter: str | None = None, kind_filter: str | N
                     title=title,
                     text=text,
                     content_type=content_type,
-                    party_id=party.id,
+                    party_id=party.id if party else None,
                     metadata=meta,
                 )
                 await session.commit()
@@ -822,7 +850,7 @@ def ingest():
 @click.option("--party", default=None, help="Only one party (e.g. SDP)")
 @click.option(
     "--kind", default=None,
-    type=click.Choice(["vaaliohjelma", "puolueohjelma", "varjobudjetti"]),
+    type=click.Choice(["vaaliohjelma", "puolueohjelma", "varjobudjetti", "hallitusohjelma"]),
 )
 @click.option("--queue", "queue", is_flag=True, help="Run as background Celery task")
 def programs(party: str | None, kind: str | None, queue: bool):
@@ -900,14 +928,21 @@ def questions(max_results: int, start_from: int, valtiopaiva: str | None, queue:
 
 
 @ingest.command()
-@click.option("--year", default=2023, type=int, help="Election year (default 2023).")
+@click.option("--year", default=2023, type=int,
+              help="Election year (default 2023; kuntavaalit 2025).")
+@click.option(
+    "--election",
+    type=click.Choice(["eduskuntavaalit", "kuntavaalit"]),
+    default="eduskuntavaalit",
+    help="Election type (default eduskuntavaalit).",
+)
 @click.option("--queue", "queue", is_flag=True, help="Run as background Celery task")
-def candidates(year: int, queue: bool):
+def candidates(year: int, election: str, queue: bool):
     """Ingest election candidates (ehdokkaat) from Tilastokeskus."""
     if queue:
-        _enqueue("ingest_candidates_task", year=year)
+        _enqueue("ingest_candidates_task", year=year, election=election)
         return
-    asyncio.run(_ingest_candidates(year))
+    asyncio.run(_ingest_candidates(year, election))
 
 
 @ingest.command()

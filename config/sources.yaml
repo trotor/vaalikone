@@ -154,3 +154,9 @@ sources:
     type: pdf
     url: "https://www.perussuomalaiset.fi/wp-content/uploads/2025/12/PS-runkolehti-4_2025_netti.pdf"
     title: "Perussuomalaisten vaihtoehtoinen budjetti 2026"
+
+  # --- Hallitusohjelmat (ei puoluesidonnainen) ---
+  - kind: hallitusohjelma
+    type: pdf
+    url: "https://julkaisut.valtioneuvosto.fi/bitstream/handle/10024/165042/Paaministeri-Petteri-Orpon-hallituksen-ohjelma-20062023.pdf?sequence=1&isAllowed=y"
+    title: "Pääministeri Petteri Orpon hallituksen ohjelma 20.6.2023"
