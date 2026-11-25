@@ -241,7 +241,7 @@ Docker Compose -portit on sidottu 127.0.0.1:een ja kontit ajavat non-root-käytt
 ```bash
 curl -X POST http://localhost:8003/api/v1/chat \
   -H "Content-Type: application/json" \
-  -d '{"question": "Mitä puolueet sanovat metsäkeskuksesta?", "model": "gpt-5.4-nano"}'
+  -d '{"question": "Mitä puolueet sanovat metsäkeskuksesta?", "model": "gpt-6-luna"}'
 ```
 
 ## Docker Compose

@@ -9,8 +9,10 @@ class Settings(BaseSettings):
 
     OPENAI_API_KEY: str | None = None
     OLLAMA_BASE_URL: str = "http://localhost:11434"
-    DEFAULT_LLM_MODEL: str = "gpt-4o"
+    DEFAULT_LLM_MODEL: str = "gpt-6-luna"
     DEFAULT_EMBED_MODEL: str = "text-embedding-3-small"
+    # Halpa malli kysymyssuggestioille ja muille pienille tehtäville
+    CHEAP_LLM_MODEL: str = "gpt-6-luna"
 
     # If set, all /api/v1/* endpoints require the "X-API-Key" header with this value.
     VAALIKONE_API_KEY: str | None = None

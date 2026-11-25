@@ -49,13 +49,13 @@ async def search_documents(
 class ChatRequest(BaseModel):
     question: str
     party: str | None = None
-    model: str = "gpt-4o-mini"
+    model: str = ""
     use_semantic: bool = True
 
 
 @router.post("/chat")
 async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db)):
-    model = _check_model_allowed(request.model or "gpt-4o-mini")
+    model = _check_model_allowed(request.model or get_settings().DEFAULT_LLM_MODEL)
     if model == TEXT_ONLY_MODEL:
         # Text-only mode — return search results without LLM
         results = await text_search(db, request.question, limit=10, party_filter=request.party)
@@ -97,7 +97,7 @@ async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db)):
 @router.post("/chat/stream")
 async def chat_stream(request: ChatRequest, db: AsyncSession = Depends(get_db)):
     """Chat with SSE streaming: emits chunk events, then a done event with sources."""
-    model = _check_model_allowed(request.model or "gpt-4o-mini")
+    model = _check_model_allowed(request.model or get_settings().DEFAULT_LLM_MODEL)
 
     async def event_generator():
         if model == TEXT_ONLY_MODEL:
@@ -191,7 +191,7 @@ async def _fill_random_pool(db: AsyncSession, count: int = 10):
     for chunk_text, title, party in chunks:
         try:
             resp = await litellm.acompletion(
-                model="gpt-4.1-nano",
+                model=get_settings().CHEAP_LLM_MODEL,
                 messages=[{
                     "role": "user",
                     "content": (
@@ -229,7 +229,7 @@ async def suggest_followups(request: SuggestRequest, db: AsyncSession = Depends(
     contextual = []
     try:
         resp = await litellm.acompletion(
-            model="gpt-4.1-nano",
+            model=get_settings().CHEAP_LLM_MODEL,
             messages=[
                 {
                     "role": "system",
@@ -317,7 +317,7 @@ async def get_suggestions(db: AsyncSession = Depends(get_db)):
             if settings.OPENAI_API_KEY:
                 os.environ.setdefault("OPENAI_API_KEY", settings.OPENAI_API_KEY)
             resp = await litellm.acompletion(
-                model="gpt-4.1-nano",
+                model=get_settings().CHEAP_LLM_MODEL,
                 messages=[{
                     "role": "user",
                     "content": (
