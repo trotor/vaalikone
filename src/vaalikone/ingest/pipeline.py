@@ -1,9 +1,10 @@
 import click
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker
 
 from vaalikone.core.config import get_settings
+from vaalikone.db.engine import create_db_engine
 from vaalikone.ingest.chunker import chunk_text
 from vaalikone.ingest.embedder import get_embeddings_batch
 from vaalikone.models.document import Document
@@ -76,7 +77,7 @@ async def process_all_documents(
 
     # Use separate sessions per document to isolate failures
     settings = get_settings()
-    engine = create_async_engine(settings.DATABASE_URL)
+    engine = create_db_engine(settings.DATABASE_URL)
     async_session_factory = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
     total_chunks = 0

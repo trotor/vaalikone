@@ -2,8 +2,6 @@ import asyncio
 import os
 from logging.config import fileConfig
 
-from sqlalchemy.ext.asyncio import create_async_engine
-
 from alembic import context
 from vaalikone.models import Base
 
@@ -33,11 +31,18 @@ def run_migrations_offline() -> None:
 def do_run_migrations(connection):
     context.configure(connection=connection, target_metadata=target_metadata)
     with context.begin_transaction():
-        context.run_migrations()
+        if connection.dialect.name == "sqlite":
+            # SQLite: skeema suoraan malleista (create_all, idempotentti),
+            # pg-tyyppejä sisältävät migraatiot eivät käänny sqliteen.
+            target_metadata.create_all(connection)
+        else:
+            context.run_migrations()
 
 
 async def run_async_migrations() -> None:
-    connectable = create_async_engine(config.get_main_option("sqlalchemy.url"))
+    from vaalikone.db.engine import create_db_engine
+
+    connectable = create_db_engine(config.get_main_option("sqlalchemy.url"))
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)
     await connectable.dispose()

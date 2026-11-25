@@ -1,9 +1,9 @@
 from datetime import datetime
 
 from sqlalchemy import Integer, Text
-from sqlalchemy.dialects.postgresql import TIMESTAMP
 from sqlalchemy.orm import Mapped, mapped_column
 
+from vaalikone.db.types import TimestampType
 from vaalikone.models.base import Base, UUIDMixin
 
 
@@ -16,5 +16,5 @@ class QueryLog(UUIDMixin, Base):
     model_used: Mapped[str | None] = mapped_column(Text)
     tokens_used: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(
-        TIMESTAMP(timezone=True), server_default="now()"
+        TimestampType(), server_default="now()"
     )

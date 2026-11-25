@@ -1,16 +1,21 @@
 from collections.abc import AsyncGenerator
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from vaalikone.db.engine import create_db_engine
 from vaalikone.models import Base
 
-DATABASE_URL = "postgresql+asyncpg://vaalikone:vaalikone@localhost:5435/vaalikone_test"
+DATABASE_URL = "sqlite+aiosqlite:///./vaalikone_test.db"
 
 
 @pytest.fixture(scope="session")
 async def engine():
-    engine = create_async_engine(DATABASE_URL)
+    import os
+
+    if os.path.exists("./vaalikone_test.db"):
+        os.remove("./vaalikone_test.db")
+    engine = create_db_engine(DATABASE_URL)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield engine

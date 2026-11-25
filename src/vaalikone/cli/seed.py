@@ -4,10 +4,11 @@ from pathlib import Path
 import click
 import yaml
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker
 
 from vaalikone.core.config import get_settings
+from vaalikone.db.engine import create_db_engine
 from vaalikone.models.party import Party
 
 
@@ -21,7 +22,7 @@ async def _seed_parties(config_path: str):
         data = yaml.safe_load(f)
 
     settings = get_settings()
-    engine = create_async_engine(settings.DATABASE_URL)
+    engine = create_db_engine(settings.DATABASE_URL)
     async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
     async with async_session() as session:

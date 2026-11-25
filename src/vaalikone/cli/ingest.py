@@ -4,10 +4,11 @@ import re
 import click
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker
 
 from vaalikone.core.config import get_settings
+from vaalikone.db.engine import create_db_engine
 from vaalikone.ingest.connectors.eduskunta import EduskuntaClient
 from vaalikone.ingest.connectors.pdf import extract_pdf_bytes, fetch_and_extract_pdf
 from vaalikone.ingest.connectors.tilastokeskus import TilastokeskusClient
@@ -20,6 +21,29 @@ from vaalikone.models.party import Party
 from vaalikone.models.representative import Representative
 from vaalikone.models.source import Source, SourceStatus, SourceType
 from vaalikone.models.vote import Vote, VoteChoice
+
+
+async def _insert_ignore(
+    session: AsyncSession, model, values: dict, conflict: list, index_where=None
+) -> bool:
+    """Insert unless a conflicting row exists. Returns True if added.
+
+    PostgreSQL: INSERT ... ON CONFLICT DO NOTHING.
+    SQLite: SELECT-then-INSERT (no partial-index support for ON CONFLICT).
+    """
+    bind = session.bind
+    if bind is not None and bind.dialect.name == "sqlite":
+        q = select(model).where(*[getattr(model, c) == values.get(c) for c in conflict])
+        if (await session.execute(q)).scalar_one_or_none() is not None:
+            return False
+        session.add(model(**values))
+        return True
+    kwargs = {"index_elements": conflict}
+    if index_where is not None:
+        kwargs["index_where"] = index_where
+    stmt = pg_insert(model).values(**values).on_conflict_do_nothing(**kwargs)
+    result = await session.execute(stmt)
+    return bool(result.rowcount)
 
 # Maps eduskunta API party abbreviations to our abbreviations
 PARTY_MAP = {
@@ -49,7 +73,7 @@ def _map_vote(api_vote: str) -> VoteChoice:
 
 async def _get_session():
     settings = get_settings()
-    engine = create_async_engine(settings.DATABASE_URL)
+    engine = create_db_engine(settings.DATABASE_URL)
     async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     return engine, async_session
 
@@ -160,16 +184,17 @@ async def _ingest_representatives() -> dict:
             party = await _find_party(session, rep_data.get("party", ""))
 
             if person_id:
-                stmt = pg_insert(Representative).values(
-                    person_id=person_id,
-                    first_name=first_name,
-                    last_name=last_name,
-                    party_id=party.id if party else None,
-                    social_media={"eduskunta_person_id": person_id},
-                )
-                stmt = stmt.on_conflict_do_nothing(index_elements=["person_id"])
-                result = await session.execute(stmt)
-                if result.rowcount:
+                if await _insert_ignore(
+                    session, Representative,
+                    {
+                        "person_id": person_id,
+                        "first_name": first_name,
+                        "last_name": last_name,
+                        "party_id": party.id if party else None,
+                        "social_media": {"eduskunta_person_id": person_id},
+                    },
+                    ["person_id"],
+                ):
                     added += 1
                 else:
                     skipped += 1
@@ -268,19 +293,18 @@ async def _ingest_votes(max_pages: int | None = None) -> dict:
                     skipped += 1
                     continue
 
-                stmt = pg_insert(Vote).values(
-                    representative_id=rep.id,
-                    session=str(vote_data.get("IstuntoVPVuosi", "") or "") or None,
-                    subject=aanestys_id,
-                    subject_title=subjects.get(aanestys_id),
-                    vote=_map_vote(vote_data.get("EdustajaAanestys", "Poissa")),
-                )
-                stmt = stmt.on_conflict_do_nothing(
-                    index_elements=["representative_id", "subject"],
+                if await _insert_ignore(
+                    session, Vote,
+                    {
+                        "representative_id": rep.id,
+                        "session": str(vote_data.get("IstuntoVPVuosi", "") or "") or None,
+                        "subject": aanestys_id,
+                        "subject_title": subjects.get(aanestys_id),
+                        "vote": _map_vote(vote_data.get("EdustajaAanestys", "Poissa")),
+                    },
+                    ["representative_id", "subject"],
                     index_where=Vote.subject.isnot(None),
-                )
-                result = await session.execute(stmt)
-                if result.rowcount:
+                ):
                     added += 1
                 else:
                     skipped += 1
@@ -555,24 +579,23 @@ async def _ingest_candidates(year: int = 2023, election: str = "eduskuntavaalit"
         skipped = 0
         for c in candidates:
             party = await _find_party(session, c.get("party_abbr") or "")
-            stmt = pg_insert(Candidate).values(
-                election_id=election.id,
-                party_id=party.id if party else None,
-                candidate_number=c["candidate_number"],
-                first_name=c["first_name"],
-                last_name=c["last_name"],
-                constituency=c.get("constituency"),
-                votes=c.get("votes"),
-                vote_share=c.get("vote_share"),
-                comparison_number=c.get("comparison_number"),
-                elected=bool(c.get("elected")),
-            )
-            stmt = stmt.on_conflict_do_nothing(
-                index_elements=["election_id", "candidate_number"],
+            if await _insert_ignore(
+                session, Candidate,
+                {
+                    "election_id": election.id,
+                    "party_id": party.id if party else None,
+                    "candidate_number": c["candidate_number"],
+                    "first_name": c["first_name"],
+                    "last_name": c["last_name"],
+                    "constituency": c.get("constituency"),
+                    "votes": c.get("votes"),
+                    "vote_share": c.get("vote_share"),
+                    "comparison_number": c.get("comparison_number"),
+                    "elected": bool(c.get("elected")),
+                },
+                ["election_id", "candidate_number"],
                 index_where=Candidate.candidate_number.isnot(None),
-            )
-            result = await session.execute(stmt)
-            if result.rowcount:
+            ):
                 added += 1
             else:
                 skipped += 1

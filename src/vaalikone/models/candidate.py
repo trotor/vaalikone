@@ -1,9 +1,9 @@
 import uuid
 
 from sqlalchemy import Boolean, Float, ForeignKey, Integer, Text
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from vaalikone.db.types import GUID
 from vaalikone.models.base import Base, UUIDMixin
 
 
@@ -11,10 +11,10 @@ class Candidate(UUIDMixin, Base):
     __tablename__ = "candidates"
 
     election_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("elections.id"), nullable=False
+        GUID(), ForeignKey("elections.id"), nullable=False
     )
     party_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("parties.id"), nullable=True
+        GUID(), ForeignKey("parties.id"), nullable=True
     )
     # Ehdokkaan numero (vaalit.fi / Tilastokeskus)
     candidate_number: Mapped[str | None] = mapped_column(Text)

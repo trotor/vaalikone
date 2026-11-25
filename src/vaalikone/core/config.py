@@ -5,7 +5,9 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    DATABASE_URL: str
+    # Oletus: paikallinen SQLite-tiedosto (ei Dockeria tarvita).
+    # PostgreSQL vaihtoehtona: postgresql+asyncpg://vaalikone:vaalikone@localhost:5435/vaalikone
+    DATABASE_URL: str = "sqlite+aiosqlite:///./vaalikone.db"
     REDIS_URL: str = "redis://localhost:6382/0"
 
     # Vanha OpenAI-avain toimii yhä (fallback)

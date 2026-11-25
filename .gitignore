@@ -21,3 +21,5 @@ htmlcov/
 /tmp/
 node_modules/
 models/*.gguf
+vaalikone.db*
+vaalikone_test.db*

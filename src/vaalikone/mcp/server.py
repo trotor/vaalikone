@@ -19,10 +19,11 @@ Usage:
 
 from fastmcp import FastMCP
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 # Load config
 from vaalikone.core.config import ensure_llm_env, get_settings
+from vaalikone.db.engine import create_db_engine
 
 # Models
 from vaalikone.models.candidate import Candidate
@@ -38,7 +39,7 @@ settings = get_settings()
 ensure_llm_env()
 
 # Database setup
-engine = create_async_engine(settings.DATABASE_URL)
+engine = create_db_engine(settings.DATABASE_URL)
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 mcp = FastMCP(

@@ -3,9 +3,9 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import Enum, ForeignKey, Text
-from sqlalchemy.dialects.postgresql import TIMESTAMP, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from vaalikone.db.types import GUID, TimestampType
 from vaalikone.models.base import Base, UUIDMixin
 
 
@@ -20,13 +20,13 @@ class Vote(UUIDMixin, Base):
     __tablename__ = "votes"
 
     representative_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("representatives.id")
+        GUID(), ForeignKey("representatives.id")
     )
     session: Mapped[str | None] = mapped_column(Text)
     subject: Mapped[str | None] = mapped_column(Text)
     subject_title: Mapped[str | None] = mapped_column(Text)
     vote: Mapped[VoteChoice] = mapped_column(Enum(VoteChoice, native_enum=False))
-    voted_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    voted_at: Mapped[datetime | None] = mapped_column(TimestampType())
     document_url: Mapped[str | None] = mapped_column(Text)
 
     representative = relationship("Representative", back_populates="votes")

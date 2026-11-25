@@ -29,11 +29,13 @@ Rakennettu kevään 2027 eduskuntavaaleja varten.
 
 ## Missä data säilyy?
 
-**Kaikki data on paikallisessa PostgreSQL-tietokannassa** — ei pilvessä, ei jaetussa kannassa:
+**Kaikki data on paikallisessa SQLite-tiedostossa** `./vaalikone.db` — ei pilvessä, ei jaetussa kannassa, ei Dockeria:
 
-- Tietokanta: `postgresql://vaalikone@localhost:5435/vaalikone` (Docker-kontti `vaalikone-postgres-1`, data Docker-volyymissa `pgdata`)
-- Taulut: `parties`, `representatives`, `votes` (äänestyskäyttäytyminen), `documents`, `embeddings` (pgvector), `sources`, `elections`, `candidates`, `campaign_finances` (vaalirahoitus), `query_log`
-- Testikanta erikseen: `vaalikone_test`
+- Tietokanta: `sqlite+aiosqlite:///./vaalikone.db` (projektin juuressa, git-ignoroitu)
+- Vektorihaku: `sqlite-vec`-laajennus (ladataan automaattisesti yhteydessä)
+- Taulut: `parties`, `representatives`, `votes` (äänestyskäyttäytyminen), `documents`, `embeddings` (float32-BLOB), `sources`, `elections`, `candidates`, `campaign_finances` (vaalirahoitus), `query_log`
+- Valinnainen PostgreSQL+pgvector: `docker compose --profile pg up -d postgres` + `DATABASE_URL=postgresql+...` (ks. `.env.example`); datan siirto: `scripts/migrate_pg_to_sqlite.py`
+- Valmis data jaettavaksi: `data/vaalikone.db.gz` (Git LFS, ~69 MB)
 - GitHub-repo ei ole julkinen — dataa ei ole pushattu mihinkään
 
 **Mitä lähtee ulos koneelta?**
@@ -43,10 +45,10 @@ Rakennettu kevään 2027 eduskuntavaaleja varten.
 
 ## Järjestelmävaatimukset
 
-- **Python** 3.12+
-- **Docker** ja Docker Compose
+- **Python** 3.12+ — **ei Dockeria tarvita oletuksena** (data on SQLite-tiedostossa)
+- **Docker** valinnainen: PostgreSQL/pgvector (`--profile pg`) tai Celery-jono (`--profile queue`)
 - **Levytila**: ~2 GB (tietokanta + mallit)
-- **RAM**: vähintään 8 GB, suositus 16+ GB
+- **RAM**: vähintään 4 GB, suositus 8+ GB
 - **GPU/Apple Silicon**: valinnainen, nopeuttaa lokaaleja malleja
 
 ### Valinnaiset
@@ -96,9 +98,11 @@ cp .env.example .env
 Muokkaa `.env`-tiedostoa:
 
 ```env
-# Pakollinen
-DATABASE_URL=postgresql+asyncpg://vaalikone:vaalikone@localhost:5435/vaalikone
-REDIS_URL=redis://localhost:6382/0
+# Oletus: paikallinen SQLite (ei asennusta)
+DATABASE_URL=sqlite+aiosqlite:///./vaalikone.db
+# PostgreSQL vaihtoehtona: docker compose --profile pg up -d postgres
+# DATABASE_URL=postgresql+asyncpg://vaalikone:vaalikone@localhost:5435/vaalikone
+REDIS_URL=redis://localhost:6382/0  # vain --queue-taustatyöt
 
 # Valinnainen — parempi laatu
 OPENAI_API_KEY=sk-proj-...
@@ -109,20 +113,7 @@ DEFAULT_LLM_MODEL=gpt-5.4-nano
 DEFAULT_EMBED_MODEL=ollama/bge-m3
 ```
 
-### 2. Käynnistä tietokanta
-
-```bash
-docker compose up -d postgres redis
-```
-
-Tarkista että palvelut ovat käynnissä:
-
-```bash
-docker compose ps
-# postgres ja redis pitäisi olla "healthy"
-```
-
-### 3. Asenna Python-riippuvuudet
+### 2. Asenna Python-riippuvuudet
 
 ```bash
 python -m venv .venv
@@ -130,25 +121,23 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-### 4. Aja tietokantamigraatiot
+### 3. Aja tietokantamigraatiot (luo SQLite-tiedoston skeeman)
 
 ```bash
 alembic upgrade head
+# tämä luo ./vaalikone.db:n ja kaikki taulut
 ```
 
-### 5. Lataa valmis tietokanta (valinnainen)
+### 4. Lataa valmis tietokanta (valinnainen)
 
-Jos haluat aloittaa valmiilla datalla (380+ dokumenttia, 183 000+ äänestystä):
+Jos haluat aloittaa valmiilla datalla (447 dokumenttia, 143 000+ äänestystä, 32 000+ ehdokasta):
 
 ```bash
-# Pura dump
-gunzip -k data/vaalikone-dump.sql.gz
-
-# Lataa tietokantaan
-docker exec -i $(docker ps -qf "name=postgres") psql -U vaalikone < data/vaalikone-dump.sql
+git lfs pull
+gunzip -k data/vaalikone.db.gz    # → ./vaalikone.db
 ```
 
-### 6. Tai syötä data alusta
+### 5. Tai syötä data alusta
 
 ```bash
 # Puolueet (16 kpl)
@@ -198,7 +187,7 @@ vaalikone ingest pdf "https://www.perussuomalaiset.fi/wp-content/uploads/2018/10
 vaalikone ingest embed --model ollama/bge-m3
 ```
 
-### 7. Käynnistä palvelin
+### 6. Käynnistä palvelin
 
 ```bash
 uvicorn vaalikone.api.app:app --host 0.0.0.0 --port 8003
@@ -337,21 +326,24 @@ curl -X POST http://localhost:8003/api/v1/chat \
 
 | Palvelu | Portti | Huom |
 |---------|--------|------|
-| FastAPI | 8003 | Web UI + API |
-| PostgreSQL | 5435 | + pgvector |
-| Redis | 6382 | Celery broker |
-| Keycloak | 8083 | Profiili: auth |
+| FastAPI | 8003 | Web UI + API (profiili `api`) |
+| PostgreSQL | 5435 | valinnainen, profiili `pg` (+ pgvector) |
+| Redis | 6382 | valinnainen, profiili `queue` (Celery) |
+| Keycloak | 8083 | profiili `auth` |
+
+Oletus: ei kontteja — SQLite-tiedosto `vaalikone.db` projektin juuressa.
 
 Portit on siirretty +3 oletuksesta päällekkäisyyksien välttämiseksi.
 
 ### Komennot
 
 ```bash
-docker compose up -d postgres redis      # Peruspalvelut
-docker compose up -d                     # Kaikki (ml. API konttina)
-docker compose --profile auth up -d      # + Keycloak
-docker compose down                      # Sammuta
-docker compose down -v                   # Poista data
+docker compose --profile pg up -d postgres    # Valinnainen: PostgreSQL/pgvector
+docker compose --profile queue up -d redis worker  # Valinnainen: Celery-taustatyöt
+docker compose --profile api up -d            # Valinnainen: API konttina
+# Oletuksena ei tarvita mitään: data on ./vaalikone.db (SQLite + sqlite-vec)
+docker compose down                          # Sammuta
+docker compose down -v                       # Poista pgdata (SQLite-tiedosto ei katoa)
 ```
 
 ## Embedding-mallien vertailu

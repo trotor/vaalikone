@@ -1,17 +1,18 @@
 import asyncio
 
 import click
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker
 
 from vaalikone.core.config import get_settings
+from vaalikone.db.engine import create_db_engine
 from vaalikone.query.pipeline import query as run_query
 
 
 async def _chat(question: str, party: str | None, model: str | None):
     settings = get_settings()
     llm_model = model or settings.DEFAULT_LLM_MODEL
-    engine = create_async_engine(settings.DATABASE_URL)
+    engine = create_db_engine(settings.DATABASE_URL)
     async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
     async with async_session() as session:
