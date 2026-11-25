@@ -3,6 +3,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from vaalikone.api.deps import get_db
+from vaalikone.core.config import is_read_only
 from vaalikone.models.candidate import Candidate
 from vaalikone.models.document import Document
 from vaalikone.models.election import Election
@@ -32,4 +33,5 @@ async def get_stats(db: AsyncSession = Depends(get_db)):
         counts[name] = result.scalar()
 
     counts["total_data_points"] = sum(counts.values())
+    counts["read_only"] = is_read_only()
     return counts

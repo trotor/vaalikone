@@ -50,6 +50,18 @@ CHAT_ALLOWED_MODELS=mistral/mistral-small-latest,mistral/mistral-medium-latest,_
 
 Tuetut provider-etuliitteet reititetään automaattisesti (mistral/, gpt-…, groq/, anthropic/, deepseek/, gemini/, ollama/…). Vanha `OPENAI_API_KEY` toimii yhä fallbackina. Ilman LLM:ää koko järjestelmä toimii pelkällä haulla (`__text_only__`, `/api/v1/compare`).
 
+### Read-only -tila (ilman API-avainta)
+
+Ilman API-avainta järjestelmä toimii automaattisesti **read-only -tilassa** (tai pakota: `READ_ONLY_MODE=true`):
+- chat vain `__text_only__` -mallilla (pelkkä haku lähteineen, LLM-mallit → 403)
+- suggestiot oletuksista ilman LLM-kutsuja
+- ei kirjoituksia tietokantaan (query_log ohitetaan), MCP:n `ingest_url` estetty
+- `/api/v1/stats` ja `/api/v1/connectivity` raportoivat `read_only: true`
+- haku, `/api/v1/compare`, äänestys- ja ehdokashaut toimivat normaalisti
+
+Lokaalilla Ollama-mallilla (`ollama/...`) LLM toimii myös ilman API-avainta — read-only ei mene päälle.
+
+
 ## Asennus
 
 ### 1. Kloonaa ja konfiguroi

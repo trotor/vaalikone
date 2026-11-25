@@ -229,9 +229,13 @@ async def ingest_url(
         url: Web-sivun tai PDF:n URL
         party: Puolueen lyhenne (esim. "SDP")
     """
+    from vaalikone.core.config import is_read_only
     from vaalikone.ingest.connectors.pdf import fetch_and_extract_pdf
     from vaalikone.ingest.connectors.web import fetch_and_extract
     from vaalikone.models.source import SourceStatus, SourceType
+
+    if is_read_only():
+        return "Read-only mode: ingest ei ole käytössä ilman API-avainta."
 
     # Detect PDF
     if url.lower().endswith(".pdf"):

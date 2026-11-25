@@ -93,3 +93,42 @@ async def test_chat_rejects_model_not_in_allowlist(monkeypatch):
     finally:
         monkeypatch.delenv("CHAT_ALLOWED_MODELS")
         get_settings.cache_clear()
+
+
+async def test_read_only_mode_blocks_llm_and_allows_text_only(monkeypatch):
+    """Read-only mode: only __text_only__ chat, no LLM calls without API key."""
+    from vaalikone.core.config import get_settings, is_read_only
+
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("READ_ONLY_MODE", "true")
+    get_settings.cache_clear()
+    try:
+        assert is_read_only() is True
+        from vaalikone.api.app import app
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+            # LLM-malli kielletty
+            r = await ac.post("/api/v1/chat", json={"question": "test", "model": "gpt-6-luna"})
+            assert r.status_code == 403
+            assert "Read-only" in r.json()["detail"]
+            # __text_only__ toimii
+            r = await ac.post(
+                "/api/v1/chat", json={"question": "verotus", "model": "__text_only__"}
+            )
+            assert r.status_code == 200
+            assert r.json()["model"] == "text-only"
+            # oletusmalli menee read-onlyssä text-onlyksi
+            r = await ac.post("/api/v1/chat", json={"question": "verotus"})
+            assert r.status_code == 200
+            # suggestions toimii ilman LLM:ää
+            r = await ac.get("/api/v1/suggestions")
+            assert r.status_code == 200
+            assert len(r.json()["suggestions"]) > 0
+            # connectivity näyttää read_only
+            r = await ac.get("/api/v1/connectivity")
+            assert r.json()["read_only"] is True
+            assert r.json()["allowed_models"] == ["__text_only__"]
+    finally:
+        monkeypatch.delenv("READ_ONLY_MODE")
+        get_settings.cache_clear()

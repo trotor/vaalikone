@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     # If set, all /api/v1/* endpoints require the "X-API-Key" header with this value.
     VAALIKONE_API_KEY: str | None = None
 
+    # Read-only mode: no LLM calls, no writes — only search/compare/stats.
+    # Auto-enabled when no API key is configured and the default model is not local (ollama/).
+    READ_ONLY_MODE: bool = False
+
     # Comma-separated allowlist of LLM models accepted by /api/v1/chat.
     # "__text_only__" (search results without an LLM) is always allowed.
     CHAT_ALLOWED_MODELS: str = ""
@@ -56,9 +60,10 @@ def get_settings() -> Settings:
 
 
 def effective_api_key() -> str | None:
-    """LLM_API_KEY jos asetettu, muuten vanha OPENAI_API_KEY."""
+    """LLM_API_KEY jos asetettu, muuten vanha OPENAI_API_KEY. Tyhjä = ei avainta."""
     s = get_settings()
-    return s.LLM_API_KEY or s.OPENAI_API_KEY
+    key = (s.LLM_API_KEY or s.OPENAI_API_KEY or "").strip()
+    return key or None
 
 
 def ensure_llm_env() -> None:
@@ -71,3 +76,12 @@ def ensure_llm_env() -> None:
 def llm_api_base() -> str | None:
     """Mahdollinen oma API-endpoint (litellm:n api_base)."""
     return get_settings().LLM_API_BASE
+
+
+def is_read_only() -> bool:
+    """True when running without an LLM: explicit READ_ONLY_MODE, or no API key
+    and the default model is not a local ollama/ model."""
+    s = get_settings()
+    if s.READ_ONLY_MODE:
+        return True
+    return effective_api_key() is None and not s.DEFAULT_LLM_MODEL.startswith("ollama/")

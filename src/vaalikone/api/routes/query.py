@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from vaalikone.api.deps import get_db
-from vaalikone.core.config import get_settings
+from vaalikone.core.config import get_settings, is_read_only
 from vaalikone.models.query_log import QueryLog
 from vaalikone.query.hybrid_search import text_search
 from vaalikone.query.pipeline import query as run_query
@@ -21,8 +21,20 @@ TEXT_ONLY_MODEL = "__text_only__"
 
 
 def _check_model_allowed(model: str) -> str:
-    """Validate the requested chat model against the configured allowlist."""
+    """Validate the requested chat model against the configured allowlist.
+
+    In read-only mode only __text_only__ is allowed (no LLM calls at all)."""
     settings = get_settings()
+    if is_read_only():
+        if model.strip() not in ("", TEXT_ONLY_MODEL):
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "Read-only mode: LLM-kutsut eivät ole käytössä ilman API-avainta. "
+                    "Käytä mallia __text_only__ (pelkkä haku lähteineen)."
+                ),
+            )
+        return TEXT_ONLY_MODEL
     model = model.strip() if model else settings.DEFAULT_LLM_MODEL
     if not model:
         model = settings.DEFAULT_LLM_MODEL
@@ -85,7 +97,7 @@ class ChatRequest(BaseModel):
 
 @router.post("/chat")
 async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db)):
-    model = _check_model_allowed(request.model or get_settings().DEFAULT_LLM_MODEL)
+    model = _check_model_allowed(request.model)
     if model == TEXT_ONLY_MODEL:
         # Text-only mode — return search results without LLM
         results = await text_search(db, request.question, limit=10, party_filter=request.party)
@@ -120,18 +132,21 @@ async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db)):
             ),
         ) from e
 
-    # Log the query
-    try:
-        log = QueryLog(
-            query_text=request.question,
-            response_text=(result.get("answer") or "")[:2000],
-            model_used=model,
-            tokens_used=result.get("tokens", {}).get("total"),
-        )
-        db.add(log)
-        await db.commit()
-    except Exception:
-        await db.rollback()
+    # Log the query (skip in read-only mode — no writes)
+    from vaalikone.core.config import is_read_only
+
+    if not is_read_only():
+        try:
+            log = QueryLog(
+                query_text=request.question,
+                response_text=(result.get("answer") or "")[:2000],
+                model_used=model,
+                tokens_used=result.get("tokens", {}).get("total"),
+            )
+            db.add(log)
+            await db.commit()
+        except Exception:
+            await db.rollback()
 
     return result
 
@@ -139,7 +154,7 @@ async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db)):
 @router.post("/chat/stream")
 async def chat_stream(request: ChatRequest, db: AsyncSession = Depends(get_db)):
     """Chat with SSE streaming: emits chunk events, then a done event with sources."""
-    model = _check_model_allowed(request.model or get_settings().DEFAULT_LLM_MODEL)
+    model = _check_model_allowed(request.model)
 
     async def event_generator():
         if model == TEXT_ONLY_MODEL:
@@ -350,40 +365,40 @@ async def get_suggestions(db: AsyncSession = Depends(get_db)):
 
     # Pick a random chunk and generate a question from it using a cheap model
     random_question = None
-    try:
-        result = await db.execute(
-            select(Embedding.chunk_text, Document.title, Party.abbreviation)
-            .join(Document, Embedding.document_id == Document.id)
-            .outerjoin(Party, Document.party_id == Party.id)
-            .order_by(func.random())
-            .limit(1)
-        )
-        row = result.first()
-        if row:
-
-            import litellm
-
-            from vaalikone.core.config import ensure_llm_env
-
-            ensure_llm_env()
-            resp = await litellm.acompletion(
-                model=get_settings().CHEAP_LLM_MODEL,
-                messages=[{
-                    "role": "user",
-                    "content": (
-                        f"Lue tama teksti puolueelta {row[2] or '?'} ({row[1] or ''}):\n"
-                        f"{row[0][:500]}\n\n"
-                        "Keksi 1 lyhyt, kiinnostava kysymys suomalaisesta politiikasta "
-                        "taman perusteella. Palauta VAIN kysymys, ei muuta."
-                    ),
-                }],
-                max_tokens=60,
+    if not is_read_only():
+        try:
+            result = await db.execute(
+                select(Embedding.chunk_text, Document.title, Party.abbreviation)
+                .join(Document, Embedding.document_id == Document.id)
+                .outerjoin(Party, Document.party_id == Party.id)
+                .order_by(func.random())
+                .limit(1)
             )
-            q = (resp.choices[0].message.content or "").strip().strip('"')
-            if q and len(q) > 10:
-                random_question = q
-    except Exception:
-        pass
+            row = result.first()
+            if row:
+                import litellm
+
+                from vaalikone.core.config import ensure_llm_env
+
+                ensure_llm_env()
+                resp = await litellm.acompletion(
+                    model=get_settings().CHEAP_LLM_MODEL,
+                    messages=[{
+                        "role": "user",
+                        "content": (
+                            f"Lue tama teksti puolueelta {row[2] or '?'} ({row[1] or ''}):\n"
+                            f"{row[0][:500]}\n\n"
+                            "Keksi 1 lyhyt, kiinnostava kysymys suomalaisesta politiikasta "
+                            "taman perusteella. Palauta VAIN kysymys, ei muuta."
+                        ),
+                    }],
+                    max_tokens=60,
+                )
+                q = (resp.choices[0].message.content or "").strip().strip('"')
+                if q and len(q) > 10:
+                    random_question = q
+        except Exception:
+            pass
 
     # Build suggestion pool
     pool = recent[:3]
@@ -430,10 +445,12 @@ async def check_connectivity():
         provider_key = "openai/"
     provider_name = provider_key.rstrip("/") if provider_key else "custom"
 
+    read_only = is_read_only()
     status = {
         "provider": provider_name,
         "default_model": model,
-        "allowed_models": settings.allowed_chat_models,
+        "allowed_models": ["__text_only__"] if read_only else settings.allowed_chat_models,
+        "read_only": read_only,
         "llm": False,
         "ollama": False,
         "internet": False,

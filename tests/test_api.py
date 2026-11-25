@@ -42,7 +42,8 @@ async def test_stats(client):
     assert "parties" in data
     assert "representatives" in data
     assert "total_data_points" in data
-    assert all(isinstance(v, int) for v in data.values())
+    assert all(isinstance(v, int) for k, v in data.items() if k != "read_only")
+    assert isinstance(data["read_only"], bool)
 
 
 async def test_search_endpoint(client):
