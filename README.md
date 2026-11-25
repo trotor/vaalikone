@@ -217,6 +217,7 @@ GET  /api/v1/representatives    Kansanedustajat (?party=SDP)
 GET  /api/v1/documents          Dokumentit (?party=VIHR)
 GET  /api/v1/sources            Datalähteet
 GET  /api/v1/search?q=...       Tekstihaku (?party=KOK&limit=10)
+GET  /api/v1/compare?q=...      Puoluevertailu ILMAN LLM:ää (lähdeotteet per puolue)
 POST /api/v1/chat               AI-chat (JSON body)
 POST /api/v1/chat/stream        AI-chat SSE-streamina (chunk/done -eventit)
 POST /api/v1/suggest            Jatkokysymysehdotukset

@@ -435,5 +435,41 @@ async def list_candidates(
     return "\n".join(lines)
 
 
+@mcp.tool()
+async def compare(q: str, limit_per_party: int = 3) -> str:
+    """Vertaa puolueiden kantoja aiheesta ILMAN kielimallia.
+
+    Palauttaa kunkin puolueen lähdeotteet suoraan tietokannasta.
+
+    Args:
+        q: Aihe haulle (esim. "metsäpolitiikka", "verotus")
+        limit_per_party: Montako otetta per puolue (max 10)
+    """
+    from vaalikone.query.hybrid_search import text_search
+
+    async with async_session() as session:
+        results = await text_search(session, q, limit=min(limit_per_party, 10) * 20)
+
+    by_party: dict[str, list[dict]] = {}
+    for r in results:
+        by_party.setdefault(r.get("party") or "muu", []).append(r)
+    lines = [f"Vertailu aiheesta: {q}", ""]
+    for party, items in sorted(
+        by_party.items(),
+        key=lambda kv: max(x.get("relevance") or 0 for x in kv[1]),
+        reverse=True,
+    ):
+        lines.append(f"== {party} ==")
+        top = sorted(items, key=lambda x: x.get("relevance") or 0, reverse=True)
+        for item in top[:limit_per_party]:
+            import re
+
+            snip = re.sub(r"<[^>]+>", "", item.get("snippet") or "")[:300].replace("\n", " ")
+            lines.append(f"- {item.get('title')} (osuvuus {item.get('relevance', 0):.3f})")
+            lines.append(f"  {snip}")
+        lines.append("")
+    return "\n".join(lines)
+
+
 if __name__ == "__main__":
     mcp.run()

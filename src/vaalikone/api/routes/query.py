@@ -46,6 +46,36 @@ async def search_documents(
     return {"query": q, "results": results, "count": len(results)}
 
 
+@router.get("/compare")
+async def compare_parties(
+    q: str = Query(..., description="Topic to compare (e.g. 'metsäpolitiikka')"),
+    limit_per_party: int = Query(3, ge=1, le=10),
+    db: AsyncSession = Depends(get_db),
+):
+    """LLM-free party comparison: top source excerpts per party, straight from the DB.
+
+    Returns {party: [{title, snippet, source_url, relevance, content_type}]}.
+    No language model involved — pure retrieval, no hallucination risk.
+    """
+    results = await text_search(db, q, limit=limit_per_party * 20)
+    by_party: dict[str, list[dict]] = {}
+    for r in results:
+        by_party.setdefault(r.get("party") or "muu", []).append(r)
+    # Keep top N per party, sort parties by best relevance
+    parties = {
+        p: sorted(items, key=lambda x: x.get("relevance") or 0, reverse=True)[:limit_per_party]
+        for p, items in by_party.items()
+    }
+    parties = dict(
+        sorted(
+            parties.items(),
+            key=lambda kv: max((x.get("relevance") or 0) for x in kv[1]),
+            reverse=True,
+        )
+    )
+    return {"query": q, "parties": parties, "party_count": len(parties)}
+
+
 class ChatRequest(BaseModel):
     question: str
     party: str | None = None
