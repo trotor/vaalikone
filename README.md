@@ -7,14 +7,17 @@ Rakennettu kevään 2027 eduskuntavaaleja varten.
 ## Ominaisuudet
 
 - **16 puoluetta** — kaikki eduskuntapuolueet + pienpuolueet
-- **434+ dokumenttia** — vaaliohjelmat, puolueohjelmat, varjobudjetit, hallitusohjelma (web + PDF)
+- **447+ dokumenttia** — vaaliohjelmat, puolueohjelmat, varjobudjetit, kuntavaaliohjelmat 2025, hallitusohjelmat 2015–2023 (web + PDF)
 - **Täysistuntopuheenvuorot** — haettavissa uudesta `api.eduskunta.fi` -hausta (`vaalikone ingest speeches`)
 - **Kirjalliset kysymykset (KK)** — 41 900+ kysymystä (`vaalikone ingest questions`)
 - **2 677 kansanedustajaa** — eduskunnan avoin data vuodesta 1907
 - **143 000+ äänestystä äänestysotsikoilla** — `vaalikone ingest vote-subjects`
 - **2 424 ehdokasta eduskuntavaaleista 2023** — äänimäärät, valintatieto, vaalipiiri (Tilastokeskus)
 - **29 950 ehdokasta kuntavaaleista 2025** — kaikki 12 vaalipiiriä, äänimäärät ja valintatieto (`vaalikone ingest candidates --election kuntavaalit --year 2025`)
-- **Hallitusohjelma 2023** — Orpon hallituksen ohjelma PDF (ei puoluesidonnainen)
+- **232 ehdokasta europarlamenttivaaleista 2024** — äänimäärät, vertausluku, valintatieto (15 valittua)
+- **Presidentinvaali 2024** — 9 ehdokasta × 2 kierrosta, koko maan äänet (valittu: Stubb)
+- **1 148 vaalirahoitusriviä eduskuntavaaleista 2023** — tukija, summa, ehdokas, puolue (vaalirahoitusvalvonta.fi)
+- **Hallitusohjelmat 2015, 2019 (Rinne), 2019 (Marin), 2023 (Orpo)** — PDF:t valtioneuvostosta (ei puoluesidonnaisia)
 - **Hybrid-haku** — PostgreSQL full-text + ILIKE + pg_trgm + semanttinen vektorihaku (pgvector)
 - **AI-chat** — kysele politiikasta luonnollisella kielellä (mikä tahansa LiteLLM-provider / lokaali Ollama), SSE-streaming
 - **Web UI** — chat tummalla/vaalealla teemalla, historia, puoluevärit, streaming
@@ -29,7 +32,7 @@ Rakennettu kevään 2027 eduskuntavaaleja varten.
 **Kaikki data on paikallisessa PostgreSQL-tietokannassa** — ei pilvessä, ei jaetussa kannassa:
 
 - Tietokanta: `postgresql://vaalikone@localhost:5435/vaalikone` (Docker-kontti `vaalikone-postgres-1`, data Docker-volyymissa `pgdata`)
-- Taulut: `parties`, `representatives`, `votes`, `documents`, `embeddings` (pgvector), `sources`, `elections`, `candidates`, `query_log`
+- Taulut: `parties`, `representatives`, `votes` (äänestyskäyttäytyminen), `documents`, `embeddings` (pgvector), `sources`, `elections`, `candidates`, `campaign_finances` (vaalirahoitus), `query_log`
 - Testikanta erikseen: `vaalikone_test`
 - GitHub-repo ei ole julkinen — dataa ei ole pushattu mihinkään
 
@@ -168,6 +171,13 @@ vaalikone ingest candidates --year 2023
 # Ehdokkaat kuntavaaleista 2025 — kaikki 12 vaalipiiriä kerralla
 vaalikone ingest candidates --election kuntavaalit --year 2025
 
+# Ehdokkaat europarlamenttivaaleista 2024 ja presidentinvaalista 2024
+vaalikone ingest candidates --election europarlamenttivaalit --year 2024
+vaalikone ingest candidates --election presidentinvaali --year 2024
+
+# Vaalirahoitusrivit eduskuntavaaleista 2023 (vaalirahoitusvalvonta.fi CSV)
+vaalikone ingest campaign-finance --year 2023
+
 # Kaikkien puolueiden vaaliohjelmat, puolueohjelmat ja varjobudjetit
 # (osoitteet konfiguroitu: config/sources.yaml)
 vaalikone ingest programs                          # kaikki
@@ -238,7 +248,10 @@ vaalikone ingest speeches ilmastonmuutos        # Täysistuntopuheenvuorot
 vaalikone ingest questions --max-results 100   # Kirjalliset kysymykset
 vaalikone ingest candidates --year 2023         # Ehdokkaat eduskuntavaalit 2023
 vaalikone ingest candidates --election kuntavaalit --year 2025  # Kuntavaalit 2025
-vaalikone ingest programs                       # Vaaliohjelmat + varjobudjetit + hallitusohjelma (config/sources.yaml)
+vaalikone ingest candidates --election europarlamenttivaalit --year 2024
+vaalikone ingest campaign-finance --year 2023   # Vaalirahoitus 2023
+vaalikone ingest programs                       # Vaaliohjelmat + varjobudjetit + hallitusohjelmat (config/sources.yaml)
+vaalikone ingest programs --kind kuntavaaliohjelma  # Kuntavaaliohjelmat 2025
 vaalikone ingest url <URL> --party SDP          # Indeksoi web-sivu
 vaalikone ingest pdf <URL> --party PS           # Indeksoi PDF
 vaalikone ingest crawl <URL> --party VIHR --depth 2  # Rekursiivinen crawlaus
@@ -412,7 +425,8 @@ vaalikone ingest embed --model ollama/bge-m3 --force
 - **Tilastokeskus PxWeb**: https://pxdata.stat.fi — ehdokkaat ja äänimäärät eduskunta- ja kuntavaaleissa (`evaa/`, `kvaa/`-taulut)
 - **Puolueiden verkkosivut**: vaaliohjelmat, puolueohjelmat, varjobudjetit (osoitteet: `config/sources.yaml`)
 - **Valtioneuvoston julkaisut**: hallitusohjelmat (julkaisut.valtioneuvosto.fi)
-- **Vaalirahoitusvalvonta**: vaalirahoitusilmoitukset (vaalirahoitusvalvonta.fi)
+- **Vaalirahoitusvalvonta**: vaalirahoitusilmoitusten tutkittavat aineistot, CSV (`vaalikone ingest campaign-finance`)
+- **FSD Pohtiva (Tampereen yliopisto)**: puolueohjelma-arkisto (fsd.tuni.fi/pohtiva)
 - **vaalit.fi**: vaalilainsäädäntö ja äänestysinfo
 
 > Huom: Eduskunnan nykyinen API (avoindata.eduskunta.fi) poistuu käytöstä vuoden 2026 lopussa.

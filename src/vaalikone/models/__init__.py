@@ -1,4 +1,5 @@
 from vaalikone.models.base import Base
+from vaalikone.models.campaign_finance import CampaignFinance
 from vaalikone.models.candidate import Candidate
 from vaalikone.models.document import ContentType, Document
 from vaalikone.models.election import Election, ElectionType
@@ -25,4 +26,5 @@ __all__ = [
     "Election",
     "ElectionType",
     "Candidate",
+    "CampaignFinance",
 ]

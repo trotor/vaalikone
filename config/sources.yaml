@@ -160,3 +160,71 @@ sources:
     type: pdf
     url: "https://julkaisut.valtioneuvosto.fi/bitstream/handle/10024/165042/Paaministeri-Petteri-Orpon-hallituksen-ohjelma-20062023.pdf?sequence=1&isAllowed=y"
     title: "Pääministeri Petteri Orpon hallituksen ohjelma 20.6.2023"
+
+  # --- Kuntavaaliohjelmat 2025 (kunta- ja aluevaalit) ---
+  - party: SDP
+    kind: kuntavaaliohjelma
+    type: pdf
+    url: "https://www.sdp.fi/uploads/sites/2/2025/02/vaaliohjelma_kaiken-voi-tehda-reilummin_sdp.pdf"
+    title: "SDP:n kunta- ja aluevaaliohjelma 2025"
+  - party: KOK
+    kind: kuntavaaliohjelma
+    type: web
+    url: "https://www.kokoomus.fi/kokoomuksen-kuntavaaliohjelma-2025/"
+    title: "Kokoomuksen kuntavaaliohjelma 2025"
+  - party: KOK
+    kind: kuntavaaliohjelma
+    type: pdf
+    url: "https://www.kokoomus.fi/wp-content/uploads/2025/03/Kokoomuksen-kuntavaaliohjelma-selkokielisena.pdf"
+    title: "Kokoomuksen kuntavaaliohjelma 2025 (selkokielinen)"
+  - party: KESK
+    kind: kuntavaaliohjelma
+    type: web
+    url: "https://keskusta.fi/kunta-ja-aluevaalit-2025/"
+    title: "Keskustan kunta- ja aluevaaliohjelma 2025"
+  - party: VIHR
+    kind: kuntavaaliohjelma
+    type: pdf
+    url: "https://www.vihreat.fi/wp-content/uploads/2025/02/Kuntavaaliohjelma2025.pdf"
+    title: "Vihreiden kuntavaaliohjelma 2025"
+  - party: PS
+    kind: kuntavaaliohjelma
+    type: web
+    url: "https://www.perussuomalaiset.fi/kunta-ja-aluevaalit-2025/"
+    title: "Perussuomalaisten kunta- ja aluevaaliohjelma 2025"
+  - party: KD
+    kind: kuntavaaliohjelma
+    type: pdf
+    url: "https://www.kd.fi/app/uploads/2025/01/KD_KUNTAVAALIOHJELMA_2025.pdf"
+    title: "Kristillisdemokraattien kuntavaaliohjelma 2025"
+  # VAS, RKP ja Liike Nyt: puolueiden sivuilta ei löytynyt pysyvää osoitetta,
+  # käytetään FSD Pohtiva -arkiston (Tampereen yliopisto) ohjelmalistasivuja
+  - party: VAS
+    kind: kuntavaaliohjelma
+    type: web
+    url: "https://www.fsd.tuni.fi/pohtiva/ohjelmalistat/VAS"
+    title: "Vasemmistoliiton vaaliohjelmat (FSD Pohtiva -arkisto)"
+  - party: RKP
+    kind: kuntavaaliohjelma
+    type: web
+    url: "https://www.fsd.tuni.fi/pohtiva/ohjelmalistat/SFP"
+    title: "RKP:n vaaliohjelmat (FSD Pohtiva -arkisto)"
+  - party: LIIK
+    kind: kuntavaaliohjelma
+    type: web
+    url: "https://www.fsd.tuni.fi/pohtiva/ohjelmalistat/LIIK"
+    title: "Liike Nytin vaaliohjelmat (FSD Pohtiva -arkisto)"
+
+  # --- Vanhemmat hallitusohjelmat ---
+  - kind: hallitusohjelma
+    type: pdf
+    url: "https://julkaisut.valtioneuvosto.fi/bitstream/handle/10024/161931/VN_2019_31.pdf?sequence=1&isAllowed=y"
+    title: "Pääministeri Antti Rinteen hallituksen ohjelma 6.6.2019"
+  - kind: hallitusohjelma
+    type: pdf
+    url: "https://julkaisut.valtioneuvosto.fi/server/api/core/bitstreams/23eccfa7-a2b2-4650-a818-dfc13ee57b16/content"
+    title: "Pääministeri Sanna Marinin hallituksen ohjelma 10.12.2019"
+  - kind: hallitusohjelma
+    type: pdf
+    url: "https://valtioneuvosto.fi/documents/10184/1427398/Ratkaisujen+Suomi_FI_YHDISTETTY_netti.pdf"
+    title: "Pääministeri Juha Sipilän hallitusohjelma 'Ratkaisujen Suomi' 27.5.2015"

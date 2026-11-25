@@ -485,13 +485,30 @@ async def _ingest_candidates(year: int = 2023, election: str = "eduskuntavaalit"
     """Ingest election candidates (ehdokkaat) from Tilastokeskus PxWeb."""
     from vaalikone.ingest.connectors.tilastokeskus import (
         EDUSKUNTAVAALIT_EHDOKKAAT_TABLE,
+        EUROVAALIT_EHDOKKAAT_TABLE,
         KUNTAVAALIT_VAALIPIIRI_TABLES,
+        PRESIDENTINVAALI_EHDOKKAAT_TABLE,
     )
 
     client = TilastokeskusClient()
     etype = ElectionType(election)
 
-    if etype == ElectionType.KUNTAVAALIT:
+    if etype == ElectionType.EUROPARLAMENTTIVAALIT:
+        click.echo(f"Fetching europarlamenttivaalit {year} candidates from Tilastokeskus...")
+        candidates = await client.fetch_election_results(
+            EUROVAALIT_EHDOKKAAT_TABLE, str(year), constituency="Koko Suomi"
+        )
+        source_url = f"https://pxdata.stat.fi/PxWeb/api/v1/fi/StatFin/{EUROVAALIT_EHDOKKAAT_TABLE}"
+    elif etype == ElectionType.PRESIDENTINVAALI:
+        click.echo(f"Fetching presidentinvaali {year} candidates (koko maa, kierrokset 1-2)...")
+        candidates = await client.fetch_election_results(
+            PRESIDENTINVAALI_EHDOKKAAT_TABLE, str(year), area="SSS",
+            kierros=["1", "2"], constituency="Koko Suomi",
+        )
+        source_url = (
+            f"https://pxdata.stat.fi/PxWeb/api/v1/fi/StatFin/{PRESIDENTINVAALI_EHDOKKAAT_TABLE}"
+        )
+    elif etype == ElectionType.KUNTAVAALIT:
         click.echo(f"Fetching kuntavaalit {year} candidates per vaalipiiri...")
         all_candidates = []
         for vaalipiiri, table in KUNTAVAALIT_VAALIPIIRI_TABLES.items():
@@ -523,10 +540,11 @@ async def _ingest_candidates(year: int = 2023, election: str = "eduskuntavaalit"
             election_row = Election(
                 year=year,
                 election_type=etype,
-                name=(
-                    f"{'Kuntavaalit' if etype == ElectionType.KUNTAVAALIT else 'Eduskuntavaalit'}"
-                    f" {year}"
-                ),
+                name={
+                    ElectionType.KUNTAVAALIT: f"Kuntavaalit {year}",
+                    ElectionType.EUROPARLAMENTTIVAALIT: f"Europarlamenttivaalit {year}",
+                    ElectionType.PRESIDENTINVAALI: f"Presidentinvaali {year}",
+                }.get(etype, f"Eduskuntavaalit {year}"),
                 source_url=source_url,
             )
             session.add(election_row)
@@ -710,6 +728,7 @@ KIND_TO_CONTENT_TYPE = {
     "puolueohjelma": ContentType.PUOLUEOHJELMA,
     "varjobudjetti": ContentType.VARJOBUDJETTI,
     "hallitusohjelma": ContentType.HALLITUSOHJELMA,
+    "kuntavaaliohjelma": ContentType.KUNTAVAALIOHJELMA,
 }
 
 
@@ -850,7 +869,9 @@ def ingest():
 @click.option("--party", default=None, help="Only one party (e.g. SDP)")
 @click.option(
     "--kind", default=None,
-    type=click.Choice(["vaaliohjelma", "puolueohjelma", "varjobudjetti", "hallitusohjelma"]),
+    type=click.Choice([
+        "vaaliohjelma", "puolueohjelma", "varjobudjetti", "hallitusohjelma", "kuntavaaliohjelma",
+    ]),
 )
 @click.option("--queue", "queue", is_flag=True, help="Run as background Celery task")
 def programs(party: str | None, kind: str | None, queue: bool):
@@ -927,12 +948,92 @@ def questions(max_results: int, start_from: int, valtiopaiva: str | None, queue:
     asyncio.run(_ingest_questions(max_results, start_from, valtiopaiva))
 
 
+async def _ingest_campaign_finance(year: int = 2023, election: str = "eduskuntavaalit") -> dict:
+    """Ingest vaalirahoitusrivit (vaalirahoitusvalvonta.fi CSV) vaaleille."""
+    from sqlalchemy import func as sa_func
+
+    from vaalikone.ingest.connectors.vaalirahoitus import (
+        EDUSKUNTAVAALIT_2023_FILES,
+        fetch_finance_rows,
+    )
+    from vaalikone.models.campaign_finance import CampaignFinance
+
+    etype = ElectionType(election)
+    files = (
+        {"eduskuntavaalit": {"2023": EDUSKUNTAVAALIT_2023_FILES}}
+        .get(election, {}).get(str(year))
+    )
+    if not files:
+        click.echo(f"No campaign finance files configured for {election} {year}.")
+        return {"added": 0, "skipped": 0}
+
+    engine, async_session = await _get_session()
+    async with async_session() as session:
+        election_row = await session.execute(
+            select(Election).where(Election.year == year, Election.election_type == etype)
+        )
+        election_row = election_row.scalar_one_or_none()
+
+        stats = {"added": 0, "skipped": 0}
+        for label, url in files.items():
+            existing = await session.execute(
+                select(sa_func.count(CampaignFinance.id)).where(
+                    CampaignFinance.source_url == url
+                )
+            )
+            if existing.scalar():
+                click.echo(f"  [skip exists] {label}: {url[:80]}")
+                stats["skipped"] += 1
+                continue
+            click.echo(f"  fetching {label}: {url[:80]}")
+            rows = await fetch_finance_rows(url)
+            for r in rows:
+                party = await _find_party(session, r.get("party_abbr") or "")
+                session.add(CampaignFinance(
+                    election_id=election_row.id if election_row else None,
+                    party_id=party.id if party else None,
+                    recipient_first_name=r.get("recipient_first_name"),
+                    recipient_last_name=r.get("recipient_last_name"),
+                    constituency=r.get("constituency"),
+                    donor_name=r.get("donor_name"),
+                    donor_business_id=r.get("donor_business_id"),
+                    donor_first_names=r.get("donor_first_names"),
+                    donor_last_name=r.get("donor_last_name"),
+                    donor_municipality=r.get("donor_municipality"),
+                    form_numbers=r.get("form_numbers"),
+                    loan_name=r.get("loan_name"),
+                    loan_term=r.get("loan_term"),
+                    amount=r.get("amount"),
+                    source_url=url,
+                ))
+                stats["added"] += 1
+            click.echo(f"  [ok] {label}: {len(rows)} rahoitusriviä")
+        await session.commit()
+    await engine.dispose()
+    return stats
+
+
+@ingest.command(name="campaign-finance")
+@click.option("--year", default=2023, type=int, help="Election year (default 2023).")
+@click.option(
+    "--election", default="eduskuntavaalit",
+    type=click.Choice(["eduskuntavaalit", "kuntavaalit", "europarlamenttivaalit",
+                       "presidentinvaali"]),
+)
+def campaign_finance(year: int, election: str):
+    """Ingest campaign finance rows (vaalirahoitus) from vaalirahoitusvalvonta.fi."""
+    stats = asyncio.run(_ingest_campaign_finance(year, election))
+    click.echo(f"Done: {stats['added']} added, {stats['skipped']} skipped.")
+
+
 @ingest.command()
 @click.option("--year", default=2023, type=int,
               help="Election year (default 2023; kuntavaalit 2025).")
 @click.option(
     "--election",
-    type=click.Choice(["eduskuntavaalit", "kuntavaalit"]),
+    type=click.Choice([
+        "eduskuntavaalit", "kuntavaalit", "europarlamenttivaalit", "presidentinvaali",
+    ]),
     default="eduskuntavaalit",
     help="Election type (default eduskuntavaalit).",
 )
