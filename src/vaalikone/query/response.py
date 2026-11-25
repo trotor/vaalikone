@@ -1,12 +1,8 @@
-import os
-
 import litellm
 
-from vaalikone.core.config import get_settings
+from vaalikone.core.config import ensure_llm_env, llm_api_base
 
-_settings = get_settings()
-if _settings.OPENAI_API_KEY:
-    os.environ.setdefault("OPENAI_API_KEY", _settings.OPENAI_API_KEY)
+ensure_llm_env()
 
 
 async def generate_response(
@@ -38,7 +34,9 @@ async def generate_response(
         },
     ]
 
-    response = await litellm.acompletion(model=model, messages=messages)
+    response = await litellm.acompletion(
+        model=model, messages=messages, api_base=llm_api_base()
+    )
 
     # Extract cost info
     usage = response.usage
@@ -93,7 +91,9 @@ async def stream_response(question: str, context: list[dict], model: str = "gpt-
     """
     messages = _build_messages(question, context)
     full_text = ""
-    stream = await litellm.acompletion(model=model, messages=messages, stream=True)
+    stream = await litellm.acompletion(
+        model=model, messages=messages, stream=True, api_base=llm_api_base()
+    )
     async for chunk in stream:
         delta = chunk.choices[0].delta.content if chunk.choices else None
         if delta:

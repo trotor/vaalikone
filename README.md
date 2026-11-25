@@ -30,8 +30,25 @@ Rakennettu kevään 2027 eduskuntavaaleja varten.
 
 ### Valinnaiset
 
-- **OpenAI API -avain**: parempi suomenkielinen laatu (embedding + LLM)
+- **LLM: mikä tahansa LiteLLM-provideri** (Mistral, OpenAI, Groq, oma gateway...) — ks. alla
 - **Ollama**: lokaalit mallit offline-käyttöön (ilmainen)
+
+### LLM-providerin valinta (ei kovakoodattu OpenAI)
+
+`.env`:
+
+```env
+# Esimerkki Mistral:
+LLM_API_KEY=oma-mistral-avain
+LLM_API_KEY_ENV=MISTRAL_API_KEY
+DEFAULT_LLM_MODEL=mistral/mistral-small-latest
+CHAT_ALLOWED_MODELS=mistral/mistral-small-latest,mistral/mistral-medium-latest,__text_only__
+
+# Tai oma gateway / proxy:
+# LLM_API_BASE=https://oma-gateway.example.com/v1
+```
+
+Tuetut provider-etuliitteet reititetään automaattisesti (mistral/, gpt-…, groq/, anthropic/, deepseek/, gemini/, ollama/…). Vanha `OPENAI_API_KEY` toimii yhä fallbackina. Ilman LLM:ää koko järjestelmä toimii pelkällä haulla (`__text_only__`, `/api/v1/compare`).
 
 ## Asennus
 

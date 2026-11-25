@@ -16,14 +16,13 @@ Usage:
     }
 """
 
-import os
 
 from fastmcp import FastMCP
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 # Load config
-from vaalikone.core.config import get_settings
+from vaalikone.core.config import ensure_llm_env, get_settings
 
 # Models
 from vaalikone.models.candidate import Candidate
@@ -36,8 +35,7 @@ from vaalikone.models.source import Source
 from vaalikone.models.vote import Vote
 
 settings = get_settings()
-if settings.OPENAI_API_KEY:
-    os.environ.setdefault("OPENAI_API_KEY", settings.OPENAI_API_KEY)
+ensure_llm_env()
 
 # Database setup
 engine = create_async_engine(settings.DATABASE_URL)

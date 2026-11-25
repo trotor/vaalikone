@@ -100,13 +100,25 @@ async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db)):
             ],
             "model": "text-only",
         }
-    result = await run_query(
-        db,
-        question=request.question,
-        model=model,
-        party_filter=request.party,
-        use_semantic=request.use_semantic,
-    )
+    try:
+        result = await run_query(
+            db,
+            question=request.question,
+            model=model,
+            party_filter=request.party,
+            use_semantic=request.use_semantic,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                f"LLM-kutsu epäonnistui (malli {model!r}): "
+                f"{type(e).__name__}: {str(e)[:200]}. "
+                "Tarkista LLM_API_KEY / LLM_API_KEY_ENV tai käytä __text_only__."
+            ),
+        ) from e
 
     # Log the query
     try:
@@ -164,12 +176,22 @@ async def chat_stream(request: ChatRequest, db: AsyncSession = Depends(get_db)):
 
         from vaalikone.query.pipeline import build_sources
         full_answer = ""
-        async for event in stream_response(request.question, results, model=model):
-            if event["type"] == "chunk":
-                full_answer += event["text"]
-            else:
-                event["sources"] = build_sources(results)
-            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+        try:
+            stream = stream_response(request.question, results, model=model)
+            async for event in stream:
+                if event["type"] == "chunk":
+                    full_answer += event["text"]
+                else:
+                    event["sources"] = build_sources(results)
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            err = {
+                "type": "error",
+                "detail": f"LLM-kutsu epäonnistui ({model!r}): "
+                f"{type(e).__name__}: {str(e)[:200]}",
+            }
+            yield f"data: {json.dumps(err, ensure_ascii=False)}\n\n"
+            return
 
         # Log the query
         try:
@@ -197,17 +219,15 @@ _random_question_pool: list[str] = []
 
 async def _fill_random_pool(db: AsyncSession, count: int = 10):
     """Generate random questions from document chunks using a cheap model."""
-    import os
 
     import litellm
 
+    from vaalikone.core.config import ensure_llm_env
     from vaalikone.models.document import Document
     from vaalikone.models.embedding import Embedding
     from vaalikone.models.party import Party
 
-    settings = get_settings()
-    if settings.OPENAI_API_KEY:
-        os.environ.setdefault("OPENAI_API_KEY", settings.OPENAI_API_KEY)
+    ensure_llm_env()
 
     result = await db.execute(
         select(Embedding.chunk_text, Document.title, Party.abbreviation)
@@ -243,13 +263,13 @@ async def _fill_random_pool(db: AsyncSession, count: int = 10):
 @router.post("/suggest")
 async def suggest_followups(request: SuggestRequest, db: AsyncSession = Depends(get_db)):
     """Return follow-up suggestions: 2 contextual + 1 random from pool."""
-    import os
     import random
 
     import litellm
-    settings = get_settings()
-    if settings.OPENAI_API_KEY:
-        os.environ.setdefault("OPENAI_API_KEY", settings.OPENAI_API_KEY)
+
+    from vaalikone.core.config import ensure_llm_env
+
+    ensure_llm_env()
 
     # Fill pool if empty (lazy init, runs once)
     if len(_random_question_pool) < 3:
@@ -340,12 +360,12 @@ async def get_suggestions(db: AsyncSession = Depends(get_db)):
         )
         row = result.first()
         if row:
-            import os
 
             import litellm
-            settings = get_settings()
-            if settings.OPENAI_API_KEY:
-                os.environ.setdefault("OPENAI_API_KEY", settings.OPENAI_API_KEY)
+
+            from vaalikone.core.config import ensure_llm_env
+
+            ensure_llm_env()
             resp = await litellm.acompletion(
                 model=get_settings().CHEAP_LLM_MODEL,
                 messages=[{
@@ -384,12 +404,37 @@ async def get_suggestions(db: AsyncSession = Depends(get_db)):
     return {"suggestions": pool[:5]}
 
 
+# Provider-osoitteet LLM-mallin etuliitteen mukaan (connectivity-tarkistus)
+PROVIDER_API = {
+    "mistral/": ("https://api.mistral.ai/v1", "MISTRAL_API_KEY"),
+    "openai/": ("https://api.openai.com/v1", "OPENAI_API_KEY"),
+    "groq/": ("https://api.groq.com/openai/v1", "GROQ_API_KEY"),
+    "anthropic/": ("https://api.anthropic.com/v1", "ANTHROPIC_API_KEY"),
+    "deepseek/": ("https://api.deepseek.com/v1", "DEEPSEEK_API_KEY"),
+    "gemini/": ("https://generativelanguage.googleapis.com/v1beta", "GEMINI_API_KEY"),
+}
+
+
 @router.get("/connectivity")
 async def check_connectivity():
-    """Check which services are available: OpenAI, Ollama, internet."""
+    """Check which services are available: configured LLM provider, Ollama, internet."""
+    import os
+
+    from vaalikone.core.config import ensure_llm_env
+
+    ensure_llm_env()
     settings = get_settings()
+    model = settings.DEFAULT_LLM_MODEL
+    provider_key = next((k for k in PROVIDER_API if model.startswith(k)), None)
+    if provider_key is None and model.startswith("gpt-"):
+        provider_key = "openai/"
+    provider_name = provider_key.rstrip("/") if provider_key else "custom"
+
     status = {
-        "openai": False,
+        "provider": provider_name,
+        "default_model": model,
+        "allowed_models": settings.allowed_chat_models,
+        "llm": False,
         "ollama": False,
         "internet": False,
         "ollama_models": [],
@@ -411,18 +456,30 @@ async def check_connectivity():
     except Exception:
         pass
 
-    # Check internet (OpenAI)
-    try:
-        async with httpx.AsyncClient(timeout=5) as client:
-            resp = await client.get("https://api.openai.com/v1/models",
-                                    headers={
-                                        "Authorization": f"Bearer {settings.OPENAI_API_KEY or ''}"
-                                    })
-            if resp.status_code in (200, 401):  # 401 = reachable but bad key
-                status["internet"] = True
-            if resp.status_code == 200:
-                status["openai"] = True
-    except Exception:
-        pass
+    # Check the configured LLM provider (any LiteLLM provider via PROVIDER_API)
+    if provider_key:
+        base, key_env = PROVIDER_API[provider_key]
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                resp = await client.get(
+                    f"{base}/models",
+                    headers={"Authorization": f"Bearer {os.environ.get(key_env, '')}"},
+                )
+                if resp.status_code in (200, 401):  # 401 = reachable but bad key
+                    status["internet"] = True
+                if resp.status_code == 200:
+                    status["llm"] = True
+        except Exception:
+            pass
+    else:
+        # Local/custom model (ollama/...) — check generic internet reachability
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                resp = await client.get("https://api.mistral.ai/v1/models")
+                if resp.status_code in (200, 401, 404):
+                    status["internet"] = True
+        except Exception:
+            pass
 
+    # Ollama models are listed regardless of provider
     return status

@@ -21,3 +21,17 @@ def test_settings_custom_values():
     )
     assert settings.DEFAULT_LLM_MODEL == "ollama/llama3"
     assert settings.KEYCLOAK_ENABLED is True
+
+
+def test_generic_llm_key_helpers(monkeypatch):
+    from vaalikone.core.config import effective_api_key, get_settings
+
+    monkeypatch.setenv("LLM_API_KEY", "testi-avain")
+    monkeypatch.setenv("LLM_API_KEY_ENV", "MISTRAL_API_KEY")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    get_settings.cache_clear()
+    try:
+        assert effective_api_key() == "testi-avain"
+        assert get_settings().LLM_API_KEY_ENV == "MISTRAL_API_KEY"
+    finally:
+        get_settings.cache_clear()

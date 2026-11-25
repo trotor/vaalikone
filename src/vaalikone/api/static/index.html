@@ -213,7 +213,7 @@
     </header>
     <div class="status-bar" id="statusBar">
         <span class="status-item" id="statusInternet"><span class="status-dot yellow"></span>Internet: tarkistetaan...</span>
-        <span class="status-item" id="statusOpenai"><span class="status-dot yellow"></span>OpenAI: tarkistetaan...</span>
+        <span class="status-item" id="statusLlm"><span class="status-dot yellow"></span>LLM: tarkistetaan...</span>
         <span class="status-item" id="statusOllama"><span class="status-dot yellow"></span>Ollama: tarkistetaan...</span>
     </div>
     <div class="filters">
@@ -383,18 +383,22 @@
             const sel = document.getElementById('modelSelect');
             sel.textContent = '';
 
-            if (connectivity.openai) {
-                [
-                    ['gpt-6-luna', 'GPT-6 Luna (halvin, suositus)'],
-                    ['gpt-6.1-terra', 'GPT-6.1 Terra (keskitaso)'],
-                    ['gpt-6.2-sol', 'GPT-6.2 Sol (laatu)'],
-                    ['gpt-6.2-astra', 'GPT-6.2 Astra (paras, kallis)'],
-                ].forEach(([val, label]) => {
+            if (connectivity.llm || (connectivity.allowed_models && connectivity.allowed_models.length)) {
+                // Mallit tulevat palvelimen allowlististä (CHAT_ALLOWED_MODELS)
+                const models = (connectivity.allowed_models || []).filter(m => m !== '__text_only__');
+                models.forEach(m => {
                     const opt = document.createElement('option');
-                    opt.value = val;
-                    opt.textContent = label;
+                    opt.value = m;
+                    opt.textContent = m;
                     sel.appendChild(opt);
                 });
+                // Jos konfiguroitu malli ei ole listassa, lisää se silti
+                if (connectivity.default_model && !models.includes(connectivity.default_model)) {
+                    const opt = document.createElement('option');
+                    opt.value = connectivity.default_model;
+                    opt.textContent = connectivity.default_model + ' (oletus)';
+                    sel.appendChild(opt);
+                }
             }
 
             if (connectivity.ollama && connectivity.ollama_models.length > 0) {
@@ -413,7 +417,7 @@
                 sel.appendChild(opt);
             }
 
-            if (!connectivity.openai) {
+            if (!connectivity.llm) {
                 document.getElementById('useSemantic').checked = false;
             }
         }
@@ -421,12 +425,12 @@
         fetch('/api/v1/connectivity', { headers: apiHeaders() }).then(r => r.json()).then(data => {
             connectivity = data;
             setStatus('statusInternet', data.internet, 'Internet: ' + (data.internet ? 'OK' : 'ei yhteyttä'));
-            setStatus('statusOpenai', data.openai, 'OpenAI: ' + (data.openai ? 'OK' : 'ei käytettävissä'));
+            setStatus('statusLlm', data.llm, 'LLM (' + (data.provider || '?') + '): ' + (data.llm ? data.default_model || 'OK' : 'ei käytettävissä'));
             setStatus('statusOllama', data.ollama, 'Ollama: ' + (data.ollama ? data.ollama_models.length + ' mallia' : 'ei käytettävissä'));
             populateModels();
         }).catch(() => {
             setStatus('statusInternet', false, 'Internet: ei yhteyttä');
-            setStatus('statusOpenai', false, 'OpenAI: ei käytettävissä');
+            setStatus('statusLlm', false, 'LLM: ei käytettävissä');
             setStatus('statusOllama', false, 'Ollama: ei käytettävissä');
             populateModels();
         });

@@ -1,3 +1,4 @@
+import os
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings
@@ -7,7 +8,17 @@ class Settings(BaseSettings):
     DATABASE_URL: str
     REDIS_URL: str = "redis://localhost:6382/0"
 
+    # Vanha OpenAI-avain toimii yhä (fallback)
     OPENAI_API_KEY: str | None = None
+
+    # Yleinen LLM-konfiguraatio: mikä tahansa LiteLLM-provideri
+    # (esim. mistral/mistral-small-latest, gpt-6-luna, ollama/qwen2.5:14b).
+    # LLM_API_KEY_ENV kertoo mille ympäristömuuttujalle avain viedään
+    # (litellm lukee esim. MISTRAL_API_KEY tai OPENAI_API_KEY automaattisesti).
+    LLM_API_KEY: str | None = None
+    LLM_API_KEY_ENV: str = "OPENAI_API_KEY"
+    LLM_API_BASE: str | None = None  # valinnainen oma endpoint (esim. oma gateway)
+
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     DEFAULT_LLM_MODEL: str = "gpt-6-luna"
     DEFAULT_EMBED_MODEL: str = "text-embedding-3-small"
@@ -42,3 +53,21 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+def effective_api_key() -> str | None:
+    """LLM_API_KEY jos asetettu, muuten vanha OPENAI_API_KEY."""
+    s = get_settings()
+    return s.LLM_API_KEY or s.OPENAI_API_KEY
+
+
+def ensure_llm_env() -> None:
+    """Vie API-avaimen oikeaan ympäristömuuttujaan, jonka litellm lukee."""
+    key = effective_api_key()
+    if key:
+        os.environ.setdefault(get_settings().LLM_API_KEY_ENV, key)
+
+
+def llm_api_base() -> str | None:
+    """Mahdollinen oma API-endpoint (litellm:n api_base)."""
+    return get_settings().LLM_API_BASE

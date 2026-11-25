@@ -1,21 +1,16 @@
-import os
-
 import httpx
 import litellm
 
-# Ensure .env is loaded for API keys
-from vaalikone.core.config import get_settings
+from vaalikone.core.config import ensure_llm_env, llm_api_base
 
-_settings = get_settings()
-if _settings.OPENAI_API_KEY:
-    os.environ.setdefault("OPENAI_API_KEY", _settings.OPENAI_API_KEY)
+ensure_llm_env()
 
 
 async def get_embedding(text: str, model: str = "text-embedding-3-small") -> list[float]:
     """Get embedding vector for a single text."""
     if model.startswith("ollama/"):
         return await _ollama_embed(text, model.removeprefix("ollama/"))
-    response = await litellm.aembedding(model=model, input=[text])
+    response = await litellm.aembedding(model=model, input=[text], api_base=llm_api_base())
     return response.data[0]["embedding"]
 
 
@@ -26,7 +21,7 @@ async def get_embeddings_batch(
     if model.startswith("ollama/"):
         # Ollama doesn't support true batching well via LiteLLM, call one by one
         return [await _ollama_embed(t, model.removeprefix("ollama/")) for t in texts]
-    response = await litellm.aembedding(model=model, input=texts)
+    response = await litellm.aembedding(model=model, input=texts, api_base=llm_api_base())
     return [item["embedding"] for item in response.data]
 
 
