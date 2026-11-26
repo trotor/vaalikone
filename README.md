@@ -38,7 +38,7 @@ Rakennettu kevään 2027 eduskuntavaaleja varten.
 Vaatimukset: Python 3.12+ ja git (Git LFS). Dockeria ei tarvita.
 
 ```bash
-# 1. Kloonaa (LFS tuo valmiin tietokannan ~76 MB)
+# 1. Kloonaa (LFS tuo valmiin tietokannan ~94 MB)
 git clone https://github.com/trotor/vaalikone.git
 cd vaalikone
 git lfs pull
@@ -93,7 +93,7 @@ vibe mcp add vaalikone --transport stdio \
 - Vektorihaku: `sqlite-vec`-laajennus (ladataan automaattisesti yhteydessä)
 - Taulut: `parties`, `representatives`, `votes` (äänestyskäyttäytyminen), `documents`, `embeddings` (float32-BLOB), `sources`, `elections`, `candidates`, `campaign_finances` (vaalirahoitus), `query_log`
 - Valinnainen PostgreSQL+pgvector: `docker compose --profile pg up -d postgres` + `DATABASE_URL=postgresql+...` (ks. `.env.example`); datan siirto: `scripts/migrate_pg_to_sqlite.py`
-- Valmis data jaettavaksi: `data/vaalikone.db.gz` (Git LFS, ~76 MB)
+- Valmis data jaettavaksi: `data/vaalikone.db.gz` (Git LFS, ~94 MB)
 - GitHub-repo ei ole julkinen — dataa ei ole pushattu mihinkään
 
 **Mitä lähtee ulos koneelta?**

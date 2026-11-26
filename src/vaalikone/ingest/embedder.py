@@ -25,12 +25,34 @@ async def get_embeddings_batch(
     return [item["embedding"] for item in response.data]
 
 
+class _ContextTooLongError(Exception):
+    pass
+
+
 async def _ollama_embed(text: str, model_name: str) -> list[float]:
-    """Direct Ollama API call for embeddings."""
+    """Direct Ollama API call for embeddings.
+
+    Jos teksti ylittää mallin kontekstin (esim. saamenkielinen teksti tokenisoituu
+    hyvin tiheästi), se jaetaan kahtia ja puolikkaiden upotukset keskiarvoistetaan.
+    """
     # Truncate very long texts to ~2000 words to avoid OOM
     words = text.split()
     if len(words) > 2000:
         text = " ".join(words[:2000])
+    try:
+        return await _ollama_embed_once(text, model_name)
+    except _ContextTooLongError:
+        words = text.split()
+        if len(words) < 2:
+            raise
+        mid = len(words) // 2
+        left = await _ollama_embed(" ".join(words[:mid]), model_name)
+        right = await _ollama_embed(" ".join(words[mid:]), model_name)
+        return [(a + b) / 2 for a, b in zip(left, right)]
+
+
+async def _ollama_embed_once(text: str, model_name: str) -> list[float]:
+    import asyncio
 
     async with httpx.AsyncClient(timeout=120) as client:
         for attempt in range(3):
@@ -39,11 +61,12 @@ async def _ollama_embed(text: str, model_name: str) -> list[float]:
                     "http://localhost:11434/api/embeddings",
                     json={"model": model_name, "prompt": text},
                 )
+                if resp.status_code == 500 and "context length" in resp.text:
+                    raise _ContextTooLongError(resp.text)
                 resp.raise_for_status()
                 return resp.json()["embedding"]
             except (httpx.HTTPStatusError, httpx.ConnectError):
                 if attempt < 2:
-                    import asyncio
                     await asyncio.sleep(2)
                     continue
                 raise
