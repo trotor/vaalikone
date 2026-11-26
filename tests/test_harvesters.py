@@ -90,6 +90,16 @@ def test_parse_program_list():
     assert first["language"] == "fi"
 
 
+def test_parse_program_list_rejects_foreign_urls():
+    html = _fixture("pohtiva_list_vas.html").replace(
+        "https://www.fsd.tuni.fi/pohtiva/ohjelmalistat/VAS/1559",
+        "https://www.sdp.fi/uploads/ohjelma.pdf",
+    )
+    rows = parse_program_list(html)
+    assert len(rows) == 2
+    assert all(r["url"].startswith("https://www.fsd.tuni.fi/pohtiva/ohjelmalistat/") for r in rows)
+
+
 def test_parse_program_page():
     page = parse_program_page(_fixture("pohtiva_program.html"))
     assert page["party_name"] == "Vasemmistoliitto"

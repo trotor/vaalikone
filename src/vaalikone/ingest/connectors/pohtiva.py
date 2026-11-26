@@ -42,6 +42,9 @@ _PARISH_RE = re.compile(r"\b(seurakunta|församling)", re.IGNORECASE)
 _PRESIDENT_RE = re.compile(r"\b(presidentin|presidentval)", re.IGNORECASE)
 
 
+_PROGRAM_URL_RE = re.compile(re.escape(POHTIVA_BASE) + r"/([A-Za-z0-9_-]+)/(\d+)/?")
+
+
 def party_list_url(code: str) -> str:
     return f"{POHTIVA_BASE}/{code}"
 
@@ -75,12 +78,16 @@ def parse_program_list(html: str) -> list[dict]:
         if not links:
             continue
         url = links[0].get("href").strip()
-        m = re.search(r"/ohjelmalistat/([^/]+)/(\d+)/?$", url)
+        # Hyväksy vain Pohtivan omat ohjelmasivut: URL:ia käytetään hakuun ja
+        # --refresh-tilassa saman URL:n lähteen poistoon.
+        m = _PROGRAM_URL_RE.fullmatch(url)
+        if not m:
+            continue
         year_txt = _clean(tds[2].text_content())
         rows.append({
             "url": url,
-            "code": m.group(1) if m else None,
-            "pohtiva_id": int(m.group(2)) if m else None,
+            "code": m.group(1),
+            "pohtiva_id": int(m.group(2)),
             "title": _clean(links[0].text_content()),
             "party_name": _clean(tds[1].text_content()),
             "year": int(year_txt) if year_txt.isdigit() else None,
