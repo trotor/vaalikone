@@ -392,36 +392,33 @@ async def search_votes(
 async def party_votes(subject_contains: str, limit: int = 10) -> str:
     """Miten eduskuntaryhmät äänestivät: täysistuntoäänestysten ryhmäjakaumat (2019→).
 
+    Hakee tekstiosumat (asian otsikko, äänestyksen otsikko, asiakirjatunnus); jos niitä
+    ei ole, semanttisesti lähimmät asiat, joten myös arkikielinen aihe toimii
+    ("Nato" -> Pohjois-Atlantin liitto). Kustakin asiasta enintään kolme uusinta äänestystä.
+
     Args:
-        subject_contains: Hae asian otsikosta, äänestyksen otsikosta tai asiakirjasta
-            (esim. "Nato", "työttömyysturva", "HE 109/2024")
+        subject_contains: Aihe, asian nimi tai asiakirja (esim. "Nato",
+            "työttömyysturva", "HE 109/2024")
         limit: Montako äänestystä (max 50)
     """
     from vaalikone.ingest.votes import subject_title
-    from vaalikone.query.hybrid_search import escape_ilike
+    from vaalikone.query.votes import find_votings
 
-    pattern = f"%{escape_ilike(subject_contains)}%"
     async with async_session() as session:
-        stmt = (
-            select(Voting)
-            .where(
-                Voting.item_title.ilike(pattern, escape="\\")
-                | Voting.title.ilike(pattern, escape="\\")
-                | Voting.document_ref.ilike(pattern, escape="\\")
-            )
-            .where(Voting.cancelled.is_(False))
-            .order_by(Voting.voted_at.desc().nullslast())
-            .limit(min(limit, 50))
-        )
-        votings = (await session.execute(stmt)).scalars().all()
+        hits = await find_votings(session, subject_contains, limit=min(limit, 50))
 
-    if not votings:
+    if not hits:
         return "Ei äänestyksiä hakuehdoilla."
     out = []
-    for v in votings:
+    for hit in hits:
+        v = hit.voting
+        match = (
+            "tekstiosuma" if hit.match == "teksti"
+            else f"semanttinen osuma {hit.similarity:.2f}"
+        )
         r = v.result or {}
         day = v.voted_at.strftime("%Y-%m-%d") if v.voted_at else ""
-        out.append(f"## {day} {subject_title(v)}")
+        out.append(f"## {day} {subject_title(v)} [{match}]")
         out.append(
             f"Tulos: jaa {r.get('jaa')}, ei {r.get('ei')}, tyhjä {r.get('tyhja')}, "
             f"poissa {r.get('poissa')} ({v.stage or ''})"

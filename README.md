@@ -83,7 +83,7 @@ vibe mcp add vaalikone --transport stdio \
 # {"mcpServers": {"vaalikone": {"command": ".venv/bin/python", "args": ["-m", "vaalikone.mcp.server"]}}}
 ```
 
-MCP:n haut (`search`, `query`, `compare`) ovat hybridihakuja: kysymyksen voi antaa kokonaisena lauseena. Vektorihakua varten aja `ollama pull bge-m3` ja pidä Ollama käynnissä — kannan embeddingit on tehty sillä. Ilman Ollamaa haku toimii pelkkänä tekstihakuna, jolloin kannattaa käyttää hakusanoja ("työttömyysturva", "Nato"). Äänestyksille on omat työkalut `party_votes` (eduskuntaryhmien kannat) ja `search_votes` (edustajien äänet).
+MCP:n haut (`search`, `query`, `compare`) ovat hybridihakuja: kysymyksen voi antaa kokonaisena lauseena. Vektorihakua varten aja `ollama pull bge-m3` ja pidä Ollama käynnissä — kannan embeddingit on tehty sillä. Ilman Ollamaa haku toimii pelkkänä tekstihakuna, jolloin kannattaa käyttää hakusanoja ("työttömyysturva", "Nato"). Äänestyksille on omat työkalut `party_votes` (eduskuntaryhmien kannat, toimii myös aiheella kuten "Nato") ja `search_votes` (edustajien äänet).
 
 **Vain itsepuuhaajille:** oma data alusta asti (tyhjä kanta, hae lähteistä): ks. [Asennus](#asennus) alla — `alembic upgrade head` luo skeeman, `vaalikone ingest ...` täyttää datan. Ei pakollista valmiilla dumpilla.
 
@@ -387,7 +387,7 @@ vibe mcp add vaalikone --transport stdio \
 
 Työkalut: `query` (LLM-chat; `model="__text_only__"` = pelkät osumat ilman LLM:ää), `search` (hybridihaku: hakusanat tai kokonainen kysymys), `compare`, `list_parties`, `get_party`, `list_documents`, `party_votes` (eduskuntaryhmien äänet asiasta), `search_votes` (edustajien äänet), `list_candidates`, `stats`, `ingest_url` (estetty read-only -tilassa).
 
-`query`, `search` ja `compare` käyttävät samaa hybridihakua (tekstihaku + bge-m3-vektorihaku), joten ne löytävät myös asiakohtaiset äänestysdokumentit ("Miten puolueet äänestivät Natoon liittymisestä?"). `party_votes` ja `search_votes` hakevat suoraan äänestystauluista osamerkkijonolla asian otsikosta tai asiakirjatunnuksesta (esim. "Pohjois-Atlantin", "HE 315/2022"). Vektorihaku vaatii käynnissä olevan Ollaman ja `bge-m3`-mallin; ilman sitä haku palaa pelkkään tekstihakuun.
+`query`, `search` ja `compare` käyttävät samaa hybridihakua (tekstihaku + bge-m3-vektorihaku), joten ne löytävät myös asiakohtaiset äänestysdokumentit ("Miten puolueet äänestivät Natoon liittymisestä?"). `party_votes` hakee ensin tekstiosumat asian otsikosta tai asiakirjatunnuksesta ("HE 315/2022", "työttömyysturva"); jos niitä ei ole, se hakee semanttisesti lähimmät asiat, joten arkikielinen aihe toimii ("Nato" → Pohjois-Atlantin sopimus ja Nato-selonteko, "hyvinvointialueet" → sote-uudistus). Kustakin asiasta näytetään kolme uusinta äänestystä ja osuman tyyppi. `search_votes` (edustajien äänet) hakee osamerkkijonolla. Vektorihaku vaatii käynnissä olevan Ollaman ja `bge-m3`-mallin; ilman sitä haku palaa pelkkään tekstihakuun.
 
 ### Tietoturva
 

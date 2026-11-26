@@ -369,3 +369,72 @@ def test_voting_document_text_and_url():
     assert url.startswith("https://api.eduskunta.fi/aanestykset/HE%20156%2F2025%20vp/")
     assert url == vote_document_url("HE 156/2025 vp", v.item_title)
     assert url != vote_document_url("HE 156/2025 vp", "Pääluokka 28")
+
+
+async def _add_votings(db_session, ref: str, item: str, n: int, year: int = 2022):
+    from datetime import datetime
+
+    from vaalikone.models.voting import Voting
+
+    vs = []
+    for i in range(n):
+        v = Voting(
+            voting_id=f"{year}-9{len(ref)}-{i}", session=f"{year}-9", year=year, number=i,
+            voted_at=datetime(year, 5, 1 + i), title=f"Äänestys {i}", item_title=item,
+            document_ref=ref, cancelled=False, result={}, group_results={},
+        )
+        db_session.add(v)
+        vs.append(v)
+    await db_session.flush()
+    return vs
+
+
+async def test_find_votings_text_hits_capped_per_matter(db_session, monkeypatch):
+    from vaalikone.query import votes as qv
+
+    await _add_votings(db_session, "HE 1/2022 vp", "Laki kissojen verotuksesta", 5)
+    await _add_votings(db_session, "HE 22/2022 vp", "Kissojen rokotuslaki", 1)
+
+    async def boom(*a, **k):  # tekstiosumilla semanttista hakua ei tehdä
+        raise AssertionError("semantic search should not run")
+
+    monkeypatch.setattr("vaalikone.ingest.embedder.get_embedding", boom)
+    hits = await qv.find_votings(db_session, "kissojen", limit=10)
+    refs = [h.voting.document_ref for h in hits]
+    assert refs.count("HE 1/2022 vp") == 3 and refs.count("HE 22/2022 vp") == 1
+    assert all(h.match == "teksti" for h in hits)
+    # uusimmat ensin
+    assert hits[0].voting.voted_at.day == 5
+
+
+async def test_find_votings_semantic_maps_documents_to_votings(db_session, monkeypatch):
+    from vaalikone.query import votes as qv
+
+    vs = await _add_votings(db_session, "HE 315/2033 vp", "Pohjois-Atlantin sopimus", 4, 2033)
+    ok = await _store_document(
+        db_session, source_type=SourceType.API, url="https://api.eduskunta.fi/aanestykset/t",
+        title="Äänestykset: HE 315/2033 vp", text="x", content_type=ContentType.AANESTYS,
+        metadata={"voting_ids": [v.voting_id for v in vs]},
+    )
+    assert ok
+    await db_session.flush()
+    doc_id = (await db_session.execute(
+        select(Document.id).join(Source).where(Source.url.like("%/aanestykset/t"))
+    )).scalar_one()
+
+    async def fake_embedding(text, model=None):
+        return [0.1, 0.2]
+
+    async def fake_semantic(session, vec, **kw):
+        assert kw["content_type"] == ContentType.AANESTYS and kw["chunk_index"] == 0
+        return [
+            {"document_id": str(doc_id), "similarity": 0.43},
+            {"document_id": "00000000-0000-0000-0000-000000000000", "similarity": 0.30},
+        ]
+
+    monkeypatch.setattr("vaalikone.ingest.embedder.get_embedding", fake_embedding)
+    monkeypatch.setattr("vaalikone.query.hybrid_search.semantic_search", fake_semantic)
+    hits = await qv.find_votings(db_session, "Nato", limit=10)
+    # 3 uusinta äänestystä; heikko osuma (yli marginaalin) karsittu
+    assert [h.voting.voting_id for h in hits] == [v.voting_id for v in reversed(vs)][:3]
+    assert all(h.match == "semanttinen" and h.similarity == 0.43 for h in hits)

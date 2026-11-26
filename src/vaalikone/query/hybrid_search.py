@@ -146,8 +146,10 @@ async def semantic_search(
     limit: int = 10,
     party_filter: str | None = None,
     embed_model: str | None = None,
+    content_type=None,
+    chunk_index: int | None = None,
 ) -> list[dict]:
-    """Semantic similarity search.
+    """Semantic similarity search (optionally limited to one ContentType).
 
     PostgreSQL: pgvector cosine distance (<=>). SQLite: sqlite-vec
     vec_distance_cosine on the float32 BLOB column.
@@ -183,6 +185,10 @@ async def semantic_search(
 
     if party_filter:
         stmt = stmt.where(Party.abbreviation == party_filter.upper())
+    if content_type is not None:
+        stmt = stmt.where(Document.content_type == content_type)
+    if chunk_index is not None:
+        stmt = stmt.where(Embedding.chunk_index == chunk_index)
 
     stmt = stmt.order_by(distance).limit(limit)
 
