@@ -2,7 +2,7 @@ import asyncio
 import re
 
 import click
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker
@@ -17,6 +17,7 @@ from vaalikone.ingest.url_validation import UnsafeURLError, validate_public_url
 from vaalikone.models.candidate import Candidate
 from vaalikone.models.document import ContentType, Document
 from vaalikone.models.election import Election, ElectionType
+from vaalikone.models.embedding import Embedding
 from vaalikone.models.party import Party
 from vaalikone.models.representative import Representative
 from vaalikone.models.source import Source, SourceStatus, SourceType
@@ -96,6 +97,22 @@ def _enqueue(task_name: str, **kwargs):
     return result.id
 
 
+async def _delete_source_by_url(session: AsyncSession, url: str) -> int:
+    """Poista URL:n lähteet, dokumentit ja embeddingit. Palauttaa poistettujen dok. määrän."""
+    src_ids = (await session.execute(select(Source.id).where(Source.url == url))).scalars().all()
+    if not src_ids:
+        return 0
+    doc_ids = (
+        await session.execute(select(Document.id).where(Document.source_id.in_(src_ids)))
+    ).scalars().all()
+    if doc_ids:
+        await session.execute(delete(Embedding).where(Embedding.document_id.in_(doc_ids)))
+        await session.execute(delete(Document).where(Document.id.in_(doc_ids)))
+    await session.execute(delete(Source).where(Source.id.in_(src_ids)))
+    await session.flush()
+    return len(doc_ids)
+
+
 async def _store_document(
     session: AsyncSession,
     *,
@@ -108,9 +125,16 @@ async def _store_document(
     representative_id=None,
     published_at=None,
     metadata: dict | None = None,
+    language: str = "fi",
+    replace: bool = False,
 ) -> bool:
     """Store a source+document, skipping if the URL was already indexed.
+
+    replace=True poistaa saman URL:n aiemman lähteen, dokumentit ja embeddingit
+    ennen tallennusta (käytä kun aiempi haku tuotti rikkinäisen/ohuen tekstin).
     Returns True if stored, False if skipped."""
+    if url and replace:
+        await _delete_source_by_url(session, url)
     if url:
         existing = await session.execute(select(Source).where(Source.url == url).limit(1))
         source = existing.scalars().first()
@@ -146,7 +170,7 @@ async def _store_document(
         party_id=party_id,
         representative_id=representative_id,
         published_at=published_at,
-        language="fi",
+        language=language or "fi",
         metadata_=metadata,
     )
     session.add(doc)
@@ -752,7 +776,15 @@ KIND_TO_CONTENT_TYPE = {
     "varjobudjetti": ContentType.VARJOBUDJETTI,
     "hallitusohjelma": ContentType.HALLITUSOHJELMA,
     "kuntavaaliohjelma": ContentType.KUNTAVAALIOHJELMA,
+    "eurovaaliohjelma": ContentType.EUROVAALIOHJELMA,
 }
+
+# Alle tämän mittainen ohjelmateksti on lähes aina laskeutumis- tai navigaatiosivu.
+# Ylikirjoitettavissa sources.yaml-rivillä (min_chars).
+DEFAULT_MIN_PROGRAM_CHARS = 2000
+# Crawlatusta sivusta tulee ohjelmadokumentti (kind) vain jos tekstiä on vähintään tämän verran;
+# lyhyemmät (yhteystiedot, uutislistat, ehdokasgalleriat) tallennetaan tyypillä MUU.
+CRAWL_MIN_PROGRAM_CHARS = 3000
 
 
 def _load_sources_yaml(path: str = "config/sources.yaml") -> list[dict]:
@@ -763,8 +795,15 @@ def _load_sources_yaml(path: str = "config/sources.yaml") -> list[dict]:
     return data.get("sources", []) if data else []
 
 
-async def _ingest_programs(party_filter: str | None = None, kind_filter: str | None = None) -> dict:
-    """Ingest all party programs/shadow budgets listed in config/sources.yaml."""
+async def _ingest_programs(
+    party_filter: str | None = None,
+    kind_filter: str | None = None,
+    refresh: bool = False,
+) -> dict:
+    """Ingest all party programs/shadow budgets listed in config/sources.yaml.
+
+    refresh=True korvaa aiemmin tallennetun saman URL:n dokumentin (esim. jos
+    aiempi haku tuotti vain laskeutumissivun)."""
     entries = _load_sources_yaml()
     if party_filter:
         entries = [e for e in entries if e.get("party", "").upper() == party_filter.upper()]
@@ -781,7 +820,11 @@ async def _ingest_programs(party_filter: str | None = None, kind_filter: str | N
         title = entry.get("title") or url
         stype = entry.get("type", "web")
         content_type = KIND_TO_CONTENT_TYPE.get(kind, ContentType.MUU)
+        language = entry.get("language", "fi")
+        min_chars = entry.get("min_chars", DEFAULT_MIN_PROGRAM_CHARS)
         meta = {"kind": kind, "program_source": "config/sources.yaml"}
+        if entry.get("year"):
+            meta["year"] = entry["year"]
 
         try:
             validate_public_url(url)
@@ -820,15 +863,18 @@ async def _ingest_programs(party_filter: str | None = None, kind_filter: str | N
                     )
                     stored = 0
                     for page in pages_list:
+                        is_program = len(page["text"]) >= CRAWL_MIN_PROGRAM_CHARS
                         ok = await _store_document(
                             session,
                             source_type=SourceType.WEBSITE,
                             url=page["url"],
                             title=page["title"],
                             text=page["text"],
-                            content_type=content_type,
+                            content_type=content_type if is_program else ContentType.MUU,
                             party_id=party.id if party else None,
                             metadata={**meta, "seed_url": url},
+                            language=language,
+                            replace=refresh,
                         )
                         if ok:
                             stored += 1
@@ -853,6 +899,12 @@ async def _ingest_programs(party_filter: str | None = None, kind_filter: str | N
                     text = content["text"]
                     src_type = SourceType.WEBSITE
 
+                if len(text.strip()) < min_chars:
+                    raise ValueError(
+                        f"vain {len(text.strip())} merkkiä (< {min_chars}) — "
+                        "todennäköisesti laskeutumissivu, tarkista URL"
+                    )
+
                 ok = await _store_document(
                     session,
                     source_type=src_type,
@@ -862,6 +914,8 @@ async def _ingest_programs(party_filter: str | None = None, kind_filter: str | N
                     content_type=content_type,
                     party_id=party.id if party else None,
                     metadata=meta,
+                    language=language,
+                    replace=refresh,
                 )
                 await session.commit()
                 if ok:
@@ -890,19 +944,18 @@ def ingest():
 
 @ingest.command(name="programs")
 @click.option("--party", default=None, help="Only one party (e.g. SDP)")
+@click.option("--kind", default=None, type=click.Choice(sorted(KIND_TO_CONTENT_TYPE)))
 @click.option(
-    "--kind", default=None,
-    type=click.Choice([
-        "vaaliohjelma", "puolueohjelma", "varjobudjetti", "hallitusohjelma", "kuntavaaliohjelma",
-    ]),
+    "--refresh", is_flag=True,
+    help="Korvaa jo tallennetut saman URL:n dokumentit (esim. ohuet laskeutumissivut)",
 )
 @click.option("--queue", "queue", is_flag=True, help="Run as background Celery task")
-def programs(party: str | None, kind: str | None, queue: bool):
+def programs(party: str | None, kind: str | None, refresh: bool, queue: bool):
     """Ingest all party programs and shadow budgets from config/sources.yaml."""
     if queue:
-        _enqueue("ingest_programs_task", party_filter=party, kind_filter=kind)
+        _enqueue("ingest_programs_task", party_filter=party, kind_filter=kind, refresh=refresh)
         return
-    asyncio.run(_ingest_programs(party, kind))
+    asyncio.run(_ingest_programs(party, kind, refresh=refresh))
 
 
 @ingest.command()
@@ -1177,3 +1230,61 @@ def embed(model: str | None, force: bool, queue: bool):
         _enqueue("ingest_embed_task", model=model, force=force)
         return
     asyncio.run(_ingest_embed(model, force))
+
+
+@ingest.command(name="party-register")
+@click.option(
+    "--programs/--no-programs", default=True,
+    help="Hae myös puolueiden yleisohjelmat (PDF) rekisteristä (oletus: kyllä)",
+)
+@click.option("--refresh", is_flag=True, help="Korvaa aiemmin haetut yleisohjelmat")
+@click.option("--queue", "queue", is_flag=True, help="Run as background Celery task")
+def party_register(programs: bool, refresh: bool, queue: bool):
+    """Puolueet ja yleisohjelmat Oikeusministeriön puoluerekisteristä (puoluerekisteri.fi)."""
+    if queue:
+        _enqueue("ingest_party_register_task", programs=programs, refresh=refresh)
+        return
+    from vaalikone.ingest.harvesters import ingest_party_register
+
+    asyncio.run(ingest_party_register(programs=programs, refresh=refresh))
+
+
+@ingest.command(name="pohtiva")
+@click.option("--party", "parties", multiple=True, help="Puolue (toistettava), esim. --party SDP")
+@click.option("--since", default=2019, show_default=True, type=int, help="Vanhin vuosi")
+@click.option("--until", default=None, type=int, help="Uusin vuosi")
+@click.option(
+    "--type", "types", multiple=True,
+    type=click.Choice(
+        ["vaaliohjelma", "yleisohjelma", "tavoiteohjelma", "erityisohjelma", "muu ohjelma"]
+    ),
+    help="Pohtivan ohjelmatyyppi (toistettava). Oletus: kaikki",
+)
+@click.option(
+    "--lang", "languages", multiple=True, default=("fi",), show_default=True,
+    help="Kielet (fi, sv, en; toistettava). Käännökset kaksinkertaistavat puolueen painon haussa",
+)
+@click.option("--max-per-party", default=None, type=int, help="Enintään N uusinta per puolue")
+@click.option(
+    "--delay", default=1.0, show_default=True, type=float, help="Viive pyyntöjen välissä (s)"
+)
+@click.option("--refresh", is_flag=True, help="Korvaa aiemmin Pohtivasta haetut dokumentit")
+@click.option("--dry-run", is_flag=True, help="Listaa vain, älä hae tekstejä")
+@click.option("--queue", "queue", is_flag=True, help="Run as background Celery task")
+def pohtiva(
+    parties: tuple[str, ...], since: int, until: int | None, types: tuple[str, ...],
+    languages: tuple[str, ...], max_per_party: int | None, delay: float, refresh: bool,
+    dry_run: bool, queue: bool,
+):
+    """Puolueohjelmat FSD:n Pohtiva-tietovarannosta (fsd.tuni.fi/pohtiva)."""
+    kwargs = dict(
+        parties=list(parties) or None, since=since, until=until, types=list(types) or None,
+        languages=list(languages), max_per_party=max_per_party, refresh=refresh,
+        delay=delay, dry_run=dry_run,
+    )
+    if queue:
+        _enqueue("ingest_pohtiva_task", **kwargs)
+        return
+    from vaalikone.ingest.harvesters import ingest_pohtiva
+
+    asyncio.run(ingest_pohtiva(**kwargs))

@@ -11,6 +11,7 @@ from urllib.parse import urljoin, urlparse
 import httpx
 import trafilatura
 
+from vaalikone.ingest.connectors.http import HARVESTER_HEADERS
 from vaalikone.ingest.url_validation import UnsafeURLError, validate_public_url
 
 # Keywords that indicate political content (Finnish)
@@ -110,7 +111,9 @@ async def crawl_site(
     results = []
     queue = [(seed_url, 0)]  # (url, depth)
 
-    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+    async with httpx.AsyncClient(
+        timeout=30, follow_redirects=True, headers=HARVESTER_HEADERS
+    ) as client:
         while queue and len(results) < max_pages:
             url, depth = queue.pop(0)
 

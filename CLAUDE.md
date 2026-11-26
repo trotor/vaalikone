@@ -71,6 +71,8 @@ vaalikone ingest speeches ilmastonmuutos --max-results 100   # täysistuntopuhee
 vaalikone ingest questions --max-results 100                 # kirjalliset kysymykset (KK)
 vaalikone ingest candidates --year 2023    # ehdokkaat Tilastokeskuksesta
 vaalikone ingest programs                  # vaaliohjelmat + varjobudjetit kaikilta puolueilta (config/sources.yaml)
+vaalikone ingest party-register            # puoluerekisteri.fi: puolueet (registry_id parties.yaml:ssa) + yleisohjelma-PDF:t
+vaalikone ingest pohtiva                   # FSD Pohtiva: ohjelmat 2019→, aja programsin jälkeen (dedup vain siihen suuntaan)
 # Kaikki yllä --queue:lla taustatöiksi Celeryyn (docker compose up worker)
 
 # Worker

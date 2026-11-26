@@ -108,11 +108,33 @@ def ingest_candidates_task(self, year: int = 2023, election: str = "eduskuntavaa
 
 
 @app.task(bind=True, max_retries=2)
-def ingest_programs_task(self, party_filter: str | None = None, kind_filter: str | None = None):
+def ingest_programs_task(
+    self, party_filter: str | None = None, kind_filter: str | None = None, refresh: bool = False,
+):
     from vaalikone.cli.ingest import _ingest_programs
 
     try:
-        return asyncio.run(_ingest_programs(party_filter, kind_filter))
+        return asyncio.run(_ingest_programs(party_filter, kind_filter, refresh=refresh))
+    except Exception as e:
+        raise self.retry(exc=e, countdown=60)
+
+
+@app.task(bind=True, max_retries=2)
+def ingest_party_register_task(self, programs: bool = True, refresh: bool = False):
+    from vaalikone.ingest.harvesters import ingest_party_register
+
+    try:
+        return asyncio.run(ingest_party_register(programs=programs, refresh=refresh))
+    except Exception as e:
+        raise self.retry(exc=e, countdown=60)
+
+
+@app.task(bind=True, max_retries=2)
+def ingest_pohtiva_task(self, **kwargs):
+    from vaalikone.ingest.harvesters import ingest_pohtiva
+
+    try:
+        return asyncio.run(ingest_pohtiva(**kwargs))
     except Exception as e:
         raise self.retry(exc=e, countdown=60)
 

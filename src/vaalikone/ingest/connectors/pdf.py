@@ -1,13 +1,16 @@
 import httpx
 import pymupdf  # PyMuPDF
 
+from vaalikone.ingest.connectors.http import HARVESTER_HEADERS
 from vaalikone.ingest.url_validation import validate_public_url
 
 
 async def fetch_and_extract_pdf(url: str) -> dict | None:
     """Download a PDF from URL and extract text using PyMuPDF."""
     validate_public_url(url)
-    async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
+    async with httpx.AsyncClient(
+        timeout=60, follow_redirects=True, headers=HARVESTER_HEADERS
+    ) as client:
         resp = await client.get(url)
         resp.raise_for_status()
         pdf_bytes = resp.content

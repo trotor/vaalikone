@@ -46,6 +46,11 @@
 - [ ] **Mistral lokaalit** — `mistral-nemo:12b` Ollamassa
 
 ### Lisädata
+- [x] Puoluerekisteri-harvesteri: 20 rekisteröityä puoluetta + yleisohjelmat (`ingest party-register`) (2026-11-26)
+- [x] FSD Pohtiva -harvesteri: puolueohjelmat 2019→, EU-vaaliohjelmat, duplikaattitarkistus (`ingest pohtiva`) (2026-11-26)
+- [ ] Eduskuntavaaliohjelmat 2027 — puolueet julkaisevat talvella 2026–27; lisää `config/sources.yaml`:iin ja aja `ingest pohtiva --since 2026` kun FSD on arkistoinut
+- [ ] Puolueiden säännöt rekisteristä (`publicapi/attachment/{id}/2/rules.pdf`) — tarvitaanko?
+- [ ] Puoluetuki ja puolueiden tukiilmoitukset (vaalirahoitusvalvonta.fi)
 - [ ] Kuntavaalit 2025 — ehdokasdata (stat.fi kvaa / oikeusministeriö)
 - [ ] Eduskuntavaalit 2027 — ehdokas- ja tulosdata kun julkaistaan
 - [ ] Vaalikoneiden vastausdata (YLE, HS) jos saatavilla

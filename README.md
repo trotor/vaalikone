@@ -6,8 +6,11 @@ Rakennettu kevään 2027 eduskuntavaaleja varten.
 
 ## Ominaisuudet
 
-- **16 puoluetta** — kaikki eduskuntapuolueet + pienpuolueet
-- **447+ dokumenttia** — vaaliohjelmat, puolueohjelmat, varjobudjetit, kuntavaaliohjelmat 2025, hallitusohjelmat 2015–2023 (web + PDF)
+- **22 puoluetta** — kaikki 20 Oikeusministeriön puoluerekisterissä olevaa puoluetta + rekisteristä poistetut PIR ja FP (`config/parties.yaml`)
+- **575 dokumenttia** — 73 eduskuntavaaliohjelmaa, 22 eurovaaliohjelmaa, 50 kunta- ja aluevaaliohjelmaa, 96 puolue-/periaate-/erityisohjelmaa, 7 varjobudjettia, hallitusohjelmat 2015–2023 (web + PDF + Pohtiva); kaikki embedattu (bge-m3)
+- **Ensimmäiset eduskuntavaalien 2027 aineistot** — Vihreiden puolueohjelma 2027–2031, Vapauden liiton vaaliohjelma 2027
+- **Puoluerekisterin yleisohjelmat** — puolueiden rekisteriin toimittamat viralliset yleisohjelmat (PDF) suoraan puoluerekisteri.fi:stä (`vaalikone ingest party-register`)
+- **FSD Pohtiva -ohjelma-arkisto** — vaali-, euro-, kunta- ja aluevaali-, periaate- ja erityisohjelmat tekstinä vuodesta 2019 (oletus) kaikille puolueille, duplikaattitarkistus puolueiden omia PDF:iä ja sivuja vastaan (`vaalikone ingest pohtiva`)
 - **Täysistuntopuheenvuorot** — haettavissa uudesta `api.eduskunta.fi` -hausta (`vaalikone ingest speeches`)
 - **Kirjalliset kysymykset (KK)** — 41 900+ kysymystä (`vaalikone ingest questions`)
 - **2 677 kansanedustajaa** — eduskunnan avoin data vuodesta 1907
@@ -34,12 +37,12 @@ Rakennettu kevään 2027 eduskuntavaaleja varten.
 Vaatimukset: Python 3.12+ ja git (Git LFS). Dockeria ei tarvita.
 
 ```bash
-# 1. Kloonaa (LFS tuo valmiin tietokannan ~69 MB)
+# 1. Kloonaa (LFS tuo valmiin tietokannan ~76 MB)
 git clone https://github.com/trotor/vaalikone.git
 cd vaalikone
 git lfs pull
 
-# 2. Pura valmis tietokanta (447 dokumenttia, 143 000+ äänestystä, 32 000+ ehdokasta)
+# 2. Pura valmis tietokanta (575 dokumenttia, 22 puoluetta, 143 000+ äänestystä, 32 000+ ehdokasta)
 gunzip -k data/vaalikone.db.gz        # → ./vaalikone.db
 
 # 3. Asenna riippuvuudet
@@ -89,7 +92,7 @@ vibe mcp add vaalikone --transport stdio \
 - Vektorihaku: `sqlite-vec`-laajennus (ladataan automaattisesti yhteydessä)
 - Taulut: `parties`, `representatives`, `votes` (äänestyskäyttäytyminen), `documents`, `embeddings` (float32-BLOB), `sources`, `elections`, `candidates`, `campaign_finances` (vaalirahoitus), `query_log`
 - Valinnainen PostgreSQL+pgvector: `docker compose --profile pg up -d postgres` + `DATABASE_URL=postgresql+...` (ks. `.env.example`); datan siirto: `scripts/migrate_pg_to_sqlite.py`
-- Valmis data jaettavaksi: `data/vaalikone.db.gz` (Git LFS, ~69 MB)
+- Valmis data jaettavaksi: `data/vaalikone.db.gz` (Git LFS, ~76 MB)
 - GitHub-repo ei ole julkinen — dataa ei ole pushattu mihinkään
 
 **Mitä lähtee ulos koneelta?**
@@ -184,7 +187,7 @@ alembic upgrade head
 
 ### 4. Lataa valmis tietokanta (valinnainen)
 
-Jos haluat aloittaa valmiilla datalla (447 dokumenttia, 143 000+ äänestystä, 32 000+ ehdokasta):
+Jos haluat aloittaa valmiilla datalla (575 dokumenttia, 22 puoluetta, 143 000+ äänestystä, 32 000+ ehdokasta):
 
 ```bash
 git lfs pull
@@ -194,8 +197,11 @@ gunzip -k data/vaalikone.db.gz    # → ./vaalikone.db
 ### 5. Tai syötä data alusta
 
 ```bash
-# Puolueet (16 kpl)
+# Puolueet (22 kpl, config/parties.yaml)
 vaalikone seed parties
+
+# Puoluerekisteri: lisää puuttuvat rekisteröidyt puolueet ja hae niiden yleisohjelmat (PDF)
+vaalikone ingest party-register
 
 # Kansanedustajat eduskunnan avoimesta datasta
 vaalikone ingest representatives
@@ -226,6 +232,16 @@ vaalikone ingest campaign-finance --year 2023
 vaalikone ingest programs                          # kaikki
 vaalikone ingest programs --party SDP              # vain yksi puolue
 vaalikone ingest programs --kind varjobudjetti     # vain varjobudjetit
+vaalikone ingest programs --party KD --refresh     # korvaa aiemmin haetut (esim. ohuet sivut)
+
+# FSD Pohtiva: puolueohjelmat 2019→ (vaali-, EU-, kunta- ja alue-, periaate- ja erityisohjelmat).
+# Aja VASTA party-registerin ja programsin JÄLKEEN: Pohtiva ohittaa ohjelmat, jotka on jo
+# haettu puolueen omilta sivuilta tai rekisteristä (duplikaattitarkistus toimii vain tähän suuntaan).
+vaalikone ingest pohtiva --dry-run                 # näytä mitä haettaisiin
+vaalikone ingest pohtiva                           # kaikki kannan puolueet, suomeksi, 2019→
+vaalikone ingest pohtiva --party VAS --since 2023  # yksi puolue, uudemmat
+vaalikone ingest pohtiva --party RKP --lang sv     # ruotsinkieliset ohjelmat
+vaalikone ingest pohtiva --type yleisohjelma --since 1990   # periaateohjelmien historia
 
 # Kaikki komennot voi myös jonottaa taustalle (--queue, vaatii workerin):
 vaalikone ingest url "https://..." --party SDP --queue
@@ -295,6 +311,8 @@ vaalikone ingest candidates --election europarlamenttivaalit --year 2024
 vaalikone ingest campaign-finance --year 2023   # Vaalirahoitus 2023
 vaalikone ingest programs                       # Vaaliohjelmat + varjobudjetit + hallitusohjelmat (config/sources.yaml)
 vaalikone ingest programs --kind kuntavaaliohjelma  # Kuntavaaliohjelmat 2025
+vaalikone ingest party-register                 # Puoluerekisteri: puolueet + yleisohjelmat
+vaalikone ingest pohtiva                        # FSD Pohtiva: puolueohjelmat 2019→ (programsin jälkeen)
 vaalikone ingest url <URL> --party SDP          # Indeksoi web-sivu
 vaalikone ingest pdf <URL> --party PS           # Indeksoi PDF
 vaalikone ingest crawl <URL> --party VIHR --depth 2  # Rekursiivinen crawlaus
@@ -427,11 +445,32 @@ Benchmark suomenkielisellä politiikkadatalla (15 kyselyä):
 
 ## Puolueet
 
+Puoluelista seuraa Oikeusministeriön puoluerekisteriä (https://puoluerekisteri.fi, 20 puoluetta 11/2026).
+`config/parties.yaml` yhdistää rekisterin (`registry_id`) ja Pohtivan (`pohtiva`) puoluekoodit vaalikoneen lyhenteisiin.
+
 ### Eduskuntapuolueet
 SDP, KOK, PS, KESK, VIHR, VAS, RKP, KD, LIIK
 
-### Pienpuolueet
-PIR, EOP, FP, VKK, SKP, LIB, SML
+### Muut rekisteröidyt puolueet
+SKP, VKK, LIB, EOP, SML, AP (Avoin Puolue), KRI (Kristallipuolue), VAPL (Vapauden liitto),
+TP (Totuuspuolue), HAMP (Hamppupuolue), SGP (Suomen Graniittipuolue)
+
+### Rekisteristä poistetut (data säilytetty)
+PIR (Piraattipuolue), FP (Feministinen puolue)
+
+### Puoluedatan lähteet ja kattavuus
+
+| Lähde | Komento | Mitä tuo |
+|-------|---------|----------|
+| Puolueiden omat sivut | `ingest programs` | Vaaliohjelmat, varjobudjetit, uusimmat puolueohjelmat (esim. Vihreiden puolueohjelma 2027–2031, Vapauden liiton eduskuntavaaliohjelma 2027) — `config/sources.yaml` |
+| Puoluerekisteri | `ingest party-register` | Viralliset yleisohjelmat niiltä 10 puolueelta 20:stä, joilla liite on rekisterissä (AP, KRI, VKK, VAPL, TP, LIB, EOP, HAMP, SML, SGP). |
+| FSD Pohtiva | `ingest pohtiva` | ~190 suomenkielistä ohjelmaa 2019→: eurovaaliohjelmat 2024, kunta- ja aluevaaliohjelmat 2025, periaate- ja erityisohjelmat. Jo kannassa olevat (3-sanajonojen kattavuus ≥ 50 %) ohitetaan, ja tyypittömälle kopiolle annetaan Pohtivan tyyppi ja vuosi. |
+
+Järjestys tuoreeseen kantaan: `seed parties` → `party-register` → `programs` → `pohtiva` → `embed`.
+
+Ohjelmatyypit (`content_type`): `vaaliohjelma` (eduskunta), `eurovaaliohjelma`, `kuntavaaliohjelma` (kunta + alue),
+`puolueohjelma` (yleis-, periaate-, tavoite- ja erityisohjelmat), `varjobudjetti`, `hallitusohjelma`.
+Pohtivan dokumenteissa on lisäksi `metadata.year`, `metadata.election` ja `published_at` (ohjelman vuosi).
 
 ## Kehitys
 
@@ -470,9 +509,10 @@ vaalikone ingest embed --model ollama/bge-m3 --force
 - **Eduskunnan avoin data**: https://avoindata.eduskunta.fi ja https://api.eduskunta.fi (kansanedustajat, äänestykset, puheenvuorot, kirjalliset kysymykset)
 - **Tilastokeskus PxWeb**: https://pxdata.stat.fi — ehdokkaat ja äänimäärät eduskunta- ja kuntavaaleissa (`evaa/`, `kvaa/`-taulut)
 - **Puolueiden verkkosivut**: vaaliohjelmat, puolueohjelmat, varjobudjetit (osoitteet: `config/sources.yaml`)
+- **Oikeusministeriön puoluerekisteri**: https://puoluerekisteri.fi — rekisteröidyt puolueet ja niiden yleisohjelmat (julkinen `publicapi`, `vaalikone ingest party-register`)
 - **Valtioneuvoston julkaisut**: hallitusohjelmat (julkaisut.valtioneuvosto.fi)
 - **Vaalirahoitusvalvonta**: vaalirahoitusilmoitusten tutkittavat aineistot, CSV (`vaalikone ingest campaign-finance`)
-- **FSD Pohtiva (Tampereen yliopisto)**: puolueohjelma-arkisto (fsd.tuni.fi/pohtiva)
+- **FSD Pohtiva**: POHTIVA – Poliittisten ohjelmien tietovaranto, Yhteiskuntatieteellinen tietoarkisto (FSD), Tampereen yliopisto, https://www.fsd.tuni.fi/pohtiva/ (`vaalikone ingest pohtiva`). Pohtivaan viitataan tieteellisen käytännön mukaan; Tietoarkisto pyytää tiedon julkaisuista, joissa aineistoa on hyödynnetty. Harvesteri pitää pyyntöjen välillä 1 s tauon.
 - **vaalit.fi**: vaalilainsäädäntö ja äänestysinfo
 
 > Huom: Eduskunnan nykyinen API (avoindata.eduskunta.fi) poistuu käytöstä vuoden 2026 lopussa.

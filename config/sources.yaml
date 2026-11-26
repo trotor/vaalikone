@@ -3,6 +3,9 @@
 #       vaalikone ingest programs --party SDP  (vain yksi puolue)
 #       vaalikone ingest programs --kind varjobudjetti
 # type: pdf = lataa PDF, web = yksittäinen sivu, crawl = sivuston läpikäynti
+# Valinnaiset: language (oletus fi), year, min_chars (oletus 2000; lyhyempi teksti = virhe,
+# koska se on lähes aina laskeutumissivu), depth/max_pages (crawl).
+# Täydentävät harvesterit: `ingest party-register` (puoluerekisteri.fi) ja `ingest pohtiva` (FSD).
 sources:
   # --- Vaaliohjelmat eduskuntavaaleissa 2023 ---
   - party: SDP
@@ -45,6 +48,14 @@ sources:
     type: pdf
     url: "https://www.vihreat.fi/wp-content/uploads/2022/08/Vihreiden-poliittinen-tavoiteohjelma-2023%E2%80%932027-2.pdf"
     title: "Vihreiden poliittinen tavoiteohjelma 2023–2027"
+  - party: VIHR
+    kind: puolueohjelma
+    type: pdf
+    url: "https://www.vihreat.fi/wp-content/uploads/2026/06/Puolueohjelma2026.pdf"
+    title: "Hyvä elämä maapallon rajoissa – Vihreiden puolueohjelma 2027–2031"
+    year: 2026
+  # Ruotsinkielinen käännös: https://www.vihreat.fi/wp-content/uploads/2026/06/Partiprogram2026.pdf
+  # (ei oletuksena — käännökset kaksinkertaistaisivat puolueen painon haussa)
   - party: VAS
     kind: vaaliohjelma
     type: crawl
@@ -60,21 +71,15 @@ sources:
     language: sv
   - party: KD
     kind: vaaliohjelma
-    type: pdf
-    url: "https://www.kdpuolue.fi/kd/files/2023/01/KD-vaaliohjelma-WEB-2023.pdf"
-    title: "KD:n vaaliohjelma 2023"
-  - party: KD
-    kind: vaaliohjelma
     type: web
     url: "https://www.kd.fi/tutustu/ohjelmat/eduskuntavaaliohjelma-2023/"
     title: "KD:n eduskuntavaaliohjelma 2023"
   - party: LIIK
-    kind: vaaliohjelma
-    type: crawl
-    url: "https://www.liikenyt.fi/"
-    title: "Liike Nyt -sivusto"
-    depth: 1
-    max_pages: 20
+    kind: puolueohjelma
+    type: web
+    url: "https://www.liikenyt.fi/periaatteet"
+    title: "Liike Nytin kuusi perusperiaatetta"
+    min_chars: 1500
 
   # --- Pienpuolueiden puolueohjelmat ---
   - party: PIR
@@ -82,11 +87,6 @@ sources:
     type: web
     url: "https://www.piraattipuolue.fi/politiikka/puolueohjelma/"
     title: "Piraattipuolueen puolueohjelma"
-  - party: EOP
-    kind: puolueohjelma
-    type: web
-    url: "https://www.eop.fi/puolueohjelmat"
-    title: "Eläinoikeuspuolueen puolueohjelmat"
   - party: LIB
     kind: puolueohjelma
     type: web
@@ -102,20 +102,34 @@ sources:
     type: pdf
     url: "https://sinimustaliike.fi/wp-content/uploads/2024/05/yleisohjelma.pdf"
     title: "Sinimustan liikkeen yleisohjelma"
-  - party: FP
+  # EOP, VKK, SML, LIB, AP, KRI, VAPL, TP, HAMP ja SGP: yleisohjelma myös puoluerekisteristä
+  # (`vaalikone ingest party-register`), vaali- ja erityisohjelmat Pohtivasta (`ingest pohtiva`).
+  # FP ja PIR on poistettu puoluerekisteristä; niiden ohjelmat tulevat Pohtivasta.
+
+  # --- Rekisteriin 2021–2026 tulleet puolueet: kotisivujen ohjelmat ---
+  - party: AP
     kind: puolueohjelma
-    type: crawl
-    url: "https://www.feministinenpuolue.fi/"
-    title: "Feministisen puolueen sivusto"
-    depth: 1
-    max_pages: 10
-  - party: VKK
+    type: web
+    url: "https://avoinpuolue.fi/puolueohjelma/"
+    title: "Avoimen Puolueen puolueohjelma"
+  - party: AP
     kind: puolueohjelma
-    type: crawl
-    url: "https://www.valtakuuluukansalle.fi/"
-    title: "Valta kuuluu kansalle -sivusto"
-    depth: 2
-    max_pages: 20
+    type: web
+    url: "https://avoinpuolue.fi/teemat/"
+    title: "Avoimen Puolueen teemat"
+  - party: VAPL
+    kind: vaaliohjelma
+    type: web
+    url: "https://vapaudenliitto.fi/eduskuntavaaliehdokkaat_2027/"
+    title: "Vapauden liiton eduskuntavaaliohjelma 2027 (tiivistelmä)"
+    year: 2027
+    min_chars: 1500
+  - party: VAPL
+    kind: vaaliohjelma
+    type: web
+    url: "https://vapaudenliitto.fi/ulko-ja-turvallisuuspoliittinen-ohjelma/"
+    title: "Vapauden liiton ulko- ja turvallisuuspoliittinen ohjelma 2026 (osa eduskuntavaaliohjelmaa 2027)"
+    year: 2027
 
   # --- Varjobudjetit (vaihtoehtobudjetit) 2026 ---
   - party: SDP
@@ -143,12 +157,7 @@ sources:
     type: web
     url: "https://www.kokoomus.fi/kestavan-tulevaisuuden-vaihtoehto/"
     title: "Kokoomuksen vaihtoehtobudjetti"
-  - party: RKP
-    kind: varjobudjetti
-    type: web
-    url: "https://sfp.fi/politik/alternativbudget/"
-    title: "RKP:s alternativbudget"
-    language: sv
+  # RKP: hallituspuolueena ei vaihtoehtobudjettia 2026 (sfp.fi/politik/alternativbudget/ on tyhjä)
   - party: PS
     kind: varjobudjetti
     type: pdf
@@ -177,43 +186,18 @@ sources:
     type: pdf
     url: "https://www.kokoomus.fi/wp-content/uploads/2025/03/Kokoomuksen-kuntavaaliohjelma-selkokielisena.pdf"
     title: "Kokoomuksen kuntavaaliohjelma 2025 (selkokielinen)"
-  - party: KESK
-    kind: kuntavaaliohjelma
-    type: web
-    url: "https://keskusta.fi/kunta-ja-aluevaalit-2025/"
-    title: "Keskustan kunta- ja aluevaaliohjelma 2025"
   - party: VIHR
     kind: kuntavaaliohjelma
     type: pdf
     url: "https://www.vihreat.fi/wp-content/uploads/2025/02/Kuntavaaliohjelma2025.pdf"
     title: "Vihreiden kuntavaaliohjelma 2025"
-  - party: PS
-    kind: kuntavaaliohjelma
-    type: web
-    url: "https://www.perussuomalaiset.fi/kunta-ja-aluevaalit-2025/"
-    title: "Perussuomalaisten kunta- ja aluevaaliohjelma 2025"
   - party: KD
     kind: kuntavaaliohjelma
     type: pdf
     url: "https://www.kd.fi/app/uploads/2025/01/KD_KUNTAVAALIOHJELMA_2025.pdf"
     title: "Kristillisdemokraattien kuntavaaliohjelma 2025"
-  # VAS, RKP ja Liike Nyt: puolueiden sivuilta ei löytynyt pysyvää osoitetta,
-  # käytetään FSD Pohtiva -arkiston (Tampereen yliopisto) ohjelmalistasivuja
-  - party: VAS
-    kind: kuntavaaliohjelma
-    type: web
-    url: "https://www.fsd.tuni.fi/pohtiva/ohjelmalistat/VAS"
-    title: "Vasemmistoliiton vaaliohjelmat (FSD Pohtiva -arkisto)"
-  - party: RKP
-    kind: kuntavaaliohjelma
-    type: web
-    url: "https://www.fsd.tuni.fi/pohtiva/ohjelmalistat/SFP"
-    title: "RKP:n vaaliohjelmat (FSD Pohtiva -arkisto)"
-  - party: LIIK
-    kind: kuntavaaliohjelma
-    type: web
-    url: "https://www.fsd.tuni.fi/pohtiva/ohjelmalistat/LIIK"
-    title: "Liike Nytin vaaliohjelmat (FSD Pohtiva -arkisto)"
+  # KESK, PS, VAS, RKP ja LIIK: koko kunta- ja aluevaaliohjelmat 2025 haetaan FSD Pohtivasta
+  # (`vaalikone ingest pohtiva --since 2025`), puolueiden omat sivut ovat vain laskeutumissivuja.
 
   # --- Vanhemmat hallitusohjelmat ---
   - kind: hallitusohjelma
