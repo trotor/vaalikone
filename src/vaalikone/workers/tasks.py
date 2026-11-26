@@ -144,3 +144,13 @@ def ingest_embed_task(model: str | None = None, force: bool = False):
     from vaalikone.cli.ingest import _ingest_embed
 
     return asyncio.run(_ingest_embed(model, force))
+
+
+@app.task(bind=True, max_retries=2)
+def ingest_group_speeches_task(self, **kwargs):
+    from vaalikone.ingest.harvesters import ingest_group_speeches
+
+    try:
+        return asyncio.run(ingest_group_speeches(**kwargs))
+    except Exception as e:
+        raise self.retry(exc=e, countdown=60)

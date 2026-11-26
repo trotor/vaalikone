@@ -48,6 +48,11 @@
 ### Lisädata
 - [x] Puoluerekisteri-harvesteri: 20 rekisteröityä puoluetta + yleisohjelmat (`ingest party-register`) (2026-11-26)
 - [x] FSD Pohtiva -harvesteri: puolueohjelmat 2019→, EU-vaaliohjelmat, duplikaattitarkistus (`ingest pohtiva`) (2026-11-26)
+- [x] Ryhmäpuheenvuorot 2019→ (`ingest group-speeches`, 1 421 kpl) (2026-11-26)
+- [x] Vaalirahoitus korjattu (CSV:n heittomerkkilainaus + UTF-8: kaikki vanhat rivit olivat tyhjiä) ja laajennettu EU 2024, PV 2024, KV 2025 (2026-11-26)
+- [x] Vaihtoehtobudjetit 2027 (SDP, VIHR, VAS, LIIK) ja 2026-ohjelmat sivukarttojen löytöajolla (2026-11-26)
+- [ ] Äänestykset uudesta api.eduskunta.fi:stä (15 659 äänestystä, edustajittaiset äänet + eduskuntaryhmäjakaumat; vanha avoindata-taulu tyhjenee: 166 äänestystä jäljellä)
+- [ ] Kirjalliset kysymykset nykyiseltä vaalikaudelta (hakuehto `valtiopaiva` ei suodata valtiopaivaasia-kategoriassa — selvitä oikea kenttä)
 - [ ] Eduskuntavaaliohjelmat 2027 — puolueet julkaisevat talvella 2026–27; lisää `config/sources.yaml`:iin ja aja `ingest pohtiva --since 2026` kun FSD on arkistoinut
 - [ ] Puolueiden säännöt rekisteristä (`publicapi/attachment/{id}/2/rules.pdf`) — tarvitaanko?
 - [ ] Puoluetuki ja puolueiden tukiilmoitukset (vaalirahoitusvalvonta.fi)

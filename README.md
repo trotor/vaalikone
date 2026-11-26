@@ -7,8 +7,9 @@ Rakennettu kevään 2027 eduskuntavaaleja varten.
 ## Ominaisuudet
 
 - **22 puoluetta** — kaikki 20 Oikeusministeriön puoluerekisterissä olevaa puoluetta + rekisteristä poistetut PIR ja FP (`config/parties.yaml`)
-- **575 dokumenttia** — 73 eduskuntavaaliohjelmaa, 22 eurovaaliohjelmaa, 50 kunta- ja aluevaaliohjelmaa, 96 puolue-/periaate-/erityisohjelmaa, 7 varjobudjettia, hallitusohjelmat 2015–2023 (web + PDF + Pohtiva); kaikki embedattu (bge-m3)
-- **Ensimmäiset eduskuntavaalien 2027 aineistot** — Vihreiden puolueohjelma 2027–2031, Vapauden liiton vaaliohjelma 2027
+- **2 046 dokumenttia** — 76 eduskuntavaaliohjelmaa, 22 eurovaaliohjelmaa, 50 kunta- ja aluevaaliohjelmaa, 139 puolue-/periaate-/erityisohjelmaa, 12 varjobudjettia, 1 421 ryhmäpuheenvuoroa, hallitusohjelmat 2015–2023; kaikki embedattu (bge-m3)
+- **Ryhmäpuheenvuorot 2019→** — eduskuntaryhmien viralliset kannat täysistunnoissa (välikysymykset, budjetit, lakiesitykset), puolue puheenvuoron hetken ryhmästä (`vaalikone ingest group-speeches`)
+- **Eduskuntavaalit 2027 -aineistot** — vaihtoehtobudjetit 2027 (SDP, VIHR, VAS, LIIK), SDP:n poliittinen ohjelma 2026, Vihreiden puolueohjelma 2027–2031, Vasemmistoliiton tavoiteohjelma 2025–2028, RKP:n puolueohjelma 2025, LIB/SML/VAPL-vaaliohjelmat 2027, KD:n ja Kokoomuksen 2026 erityisohjelmat
 - **Puoluerekisterin yleisohjelmat** — puolueiden rekisteriin toimittamat viralliset yleisohjelmat (PDF) suoraan puoluerekisteri.fi:stä (`vaalikone ingest party-register`)
 - **FSD Pohtiva -ohjelma-arkisto** — vaali-, euro-, kunta- ja aluevaali-, periaate- ja erityisohjelmat tekstinä vuodesta 2019 (oletus) kaikille puolueille, duplikaattitarkistus puolueiden omia PDF:iä ja sivuja vastaan (`vaalikone ingest pohtiva`)
 - **Täysistuntopuheenvuorot** — haettavissa uudesta `api.eduskunta.fi` -hausta (`vaalikone ingest speeches`)
@@ -19,7 +20,7 @@ Rakennettu kevään 2027 eduskuntavaaleja varten.
 - **29 950 ehdokasta kuntavaaleista 2025** — kaikki 12 vaalipiiriä, äänimäärät ja valintatieto (`vaalikone ingest candidates --election kuntavaalit --year 2025`)
 - **232 ehdokasta europarlamenttivaaleista 2024** — äänimäärät, vertausluku, valintatieto (15 valittua)
 - **Presidentinvaali 2024** — 9 ehdokasta × 2 kierrosta, koko maan äänet (valittu: Stubb)
-- **1 148 vaalirahoitusriviä eduskuntavaaleista 2023** — tukija, summa, ehdokas, puolue (vaalirahoitusvalvonta.fi)
+- **3 249 vaalirahoitusriviä** — eduskuntavaalit 2023, eurovaalit 2024, presidentinvaali 2024, kuntavaalit 2025: tukija, summa, ehdokas, puolue (vaalirahoitusvalvonta.fi; lopullinen ilmoitus korvaa ennakkoilmoituksen)
 - **Hallitusohjelmat 2015, 2019 (Rinne), 2019 (Marin), 2023 (Orpo)** — PDF:t valtioneuvostosta (ei puoluesidonnaisia)
 - **Hybrid-haku** — SQLite full-text/LIKE + semanttinen vektorihaku (sqlite-vec); PostgreSQL+pgvector valinnainen
 - **AI-chat** — kysele politiikasta luonnollisella kielellä (mikä tahansa LiteLLM-provider / lokaali Ollama), SSE-streaming
@@ -42,7 +43,7 @@ git clone https://github.com/trotor/vaalikone.git
 cd vaalikone
 git lfs pull
 
-# 2. Pura valmis tietokanta (575 dokumenttia, 22 puoluetta, 143 000+ äänestystä, 32 000+ ehdokasta)
+# 2. Pura valmis tietokanta (2 046 dokumenttia, 22 puoluetta, 143 000+ äänestystä, 32 000+ ehdokasta, 3 249 vaalirahoitusriviä)
 gunzip -k data/vaalikone.db.gz        # → ./vaalikone.db
 
 # 3. Asenna riippuvuudet
@@ -187,7 +188,7 @@ alembic upgrade head
 
 ### 4. Lataa valmis tietokanta (valinnainen)
 
-Jos haluat aloittaa valmiilla datalla (575 dokumenttia, 22 puoluetta, 143 000+ äänestystä, 32 000+ ehdokasta):
+Jos haluat aloittaa valmiilla datalla (2 046 dokumenttia, 22 puoluetta, 143 000+ äänestystä, 32 000+ ehdokasta, 3 249 vaalirahoitusriviä):
 
 ```bash
 git lfs pull
@@ -212,6 +213,7 @@ vaalikone ingest vote-subjects --max-pages 50   # Täyttää äänestysten otsik
 
 # Täysistuntopuheenvuorot ja kirjalliset kysymykset (uusi api.eduskunta.fi)
 vaalikone ingest speeches ilmastonmuutos --max-results 100
+vaalikone ingest group-speeches                    # ryhmäpuheenvuorot 2019→ (eduskuntaryhmien kannat)
 vaalikone ingest questions --max-results 100 --valtiopaiva "2023 vp"
 
 # Ehdokkaat eduskuntavaaleista 2023 (Tilastokeskus PxWeb)
@@ -224,8 +226,12 @@ vaalikone ingest candidates --election kuntavaalit --year 2025
 vaalikone ingest candidates --election europarlamenttivaalit --year 2024
 vaalikone ingest candidates --election presidentinvaali --year 2024
 
-# Vaalirahoitusrivit eduskuntavaaleista 2023 (vaalirahoitusvalvonta.fi CSV)
-vaalikone ingest campaign-finance --year 2023
+# Vaalirahoitusrivit (vaalirahoitusvalvonta.fi CSV; tiedostot haetaan listaussivulta,
+# uudempi versio ja lopullinen ilmoitus korvaavat vanhemman / ennakkoilmoituksen)
+vaalikone ingest campaign-finance --election eduskuntavaalit --year 2023
+vaalikone ingest campaign-finance --election europarlamenttivaalit --year 2024
+vaalikone ingest campaign-finance --election presidentinvaali --year 2024
+vaalikone ingest campaign-finance --election kuntavaalit --year 2025
 
 # Kaikkien puolueiden vaaliohjelmat, puolueohjelmat ja varjobudjetit
 # (osoitteet konfiguroitu: config/sources.yaml)
@@ -304,11 +310,12 @@ vaalikone ingest representatives                # Hae kansanedustajat
 vaalikone ingest votes --max-pages 100          # Hae äänestyksiä (otsikoilla)
 vaalikone ingest vote-subjects                  # Äänestysotsikot jälkikäteen
 vaalikone ingest speeches ilmastonmuutos        # Täysistuntopuheenvuorot
+vaalikone ingest group-speeches                 # Ryhmäpuheenvuorot 2019→
 vaalikone ingest questions --max-results 100   # Kirjalliset kysymykset
 vaalikone ingest candidates --year 2023         # Ehdokkaat eduskuntavaalit 2023
 vaalikone ingest candidates --election kuntavaalit --year 2025  # Kuntavaalit 2025
 vaalikone ingest candidates --election europarlamenttivaalit --year 2024
-vaalikone ingest campaign-finance --year 2023   # Vaalirahoitus 2023
+vaalikone ingest campaign-finance --election kuntavaalit --year 2025  # Vaalirahoitus
 vaalikone ingest programs                       # Vaaliohjelmat + varjobudjetit + hallitusohjelmat (config/sources.yaml)
 vaalikone ingest programs --kind kuntavaaliohjelma  # Kuntavaaliohjelmat 2025
 vaalikone ingest party-register                 # Puoluerekisteri: puolueet + yleisohjelmat
@@ -464,9 +471,14 @@ PIR (Piraattipuolue), FP (Feministinen puolue)
 |-------|---------|----------|
 | Puolueiden omat sivut | `ingest programs` | Vaaliohjelmat, varjobudjetit, uusimmat puolueohjelmat (esim. Vihreiden puolueohjelma 2027–2031, Vapauden liiton eduskuntavaaliohjelma 2027) — `config/sources.yaml` |
 | Puoluerekisteri | `ingest party-register` | Viralliset yleisohjelmat niiltä 10 puolueelta 20:stä, joilla liite on rekisterissä (AP, KRI, VKK, VAPL, TP, LIB, EOP, HAMP, SML, SGP). |
+| Eduskunta (api.eduskunta.fi) | `ingest group-speeches` | 1 421 ryhmäpuheenvuoroa 2019→ — eduskuntaryhmän virallinen kanta jokaiseen isoon keskusteluun |
 | FSD Pohtiva | `ingest pohtiva` | ~190 suomenkielistä ohjelmaa 2019→: eurovaaliohjelmat 2024, kunta- ja aluevaaliohjelmat 2025, periaate- ja erityisohjelmat. Jo kannassa olevat (3-sanajonojen kattavuus ≥ 50 %) ohitetaan, ja tyypittömälle kopiolle annetaan Pohtivan tyyppi ja vuosi. |
 
 Järjestys tuoreeseen kantaan: `seed parties` → `party-register` → `programs` → `pohtiva` → `embed`.
+
+Uusien ohjelmien löytäminen: puolueiden WordPress-sivukartat (`/sitemap_index.xml`, `lastmod`) kertovat
+mitkä ohjelmasivut ovat uusia tai päivittyneitä; lisää löydökset `config/sources.yaml`:iin ja aja `ingest programs`
+(jo haetut ohitetaan ennen latausta). keskusta.fi estää harvesterin (403) 11/2026 — Keskustan ohjelmat tulevat Pohtivasta.
 
 Ohjelmatyypit (`content_type`): `vaaliohjelma` (eduskunta), `eurovaaliohjelma`, `kuntavaaliohjelma` (kunta + alue),
 `puolueohjelma` (yleis-, periaate-, tavoite- ja erityisohjelmat), `varjobudjetti`, `hallitusohjelma`.

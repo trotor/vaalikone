@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import Float, ForeignKey, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -36,7 +36,10 @@ class CampaignFinance(UUIDMixin, Base):
     amount: Mapped[float | None] = mapped_column(Float)
     source_url: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
-        TimestampType(), server_default="now()"
+        TimestampType(),
+        server_default="now()",
+        # Python-puolen oletus: SQLite-skeemassa DEFAULT 'now()' on kirjaimellinen merkkijono
+        default=lambda: datetime.now(UTC),
     )
 
     election = relationship("Election")

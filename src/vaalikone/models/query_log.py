@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import Integer, Text
 from sqlalchemy.orm import Mapped, mapped_column
@@ -16,5 +16,8 @@ class QueryLog(UUIDMixin, Base):
     model_used: Mapped[str | None] = mapped_column(Text)
     tokens_used: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(
-        TimestampType(), server_default="now()"
+        TimestampType(),
+        server_default="now()",
+        # Python-puolen oletus: SQLite-skeemassa DEFAULT 'now()' on kirjaimellinen merkkijono
+        default=lambda: datetime.now(UTC),
     )

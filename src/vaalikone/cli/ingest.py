@@ -22,6 +22,7 @@ from vaalikone.models.party import Party
 from vaalikone.models.representative import Representative
 from vaalikone.models.source import Source, SourceStatus, SourceType
 from vaalikone.models.vote import Vote, VoteChoice
+from vaalikone.query.hybrid_search import escape_ilike
 
 
 async def _insert_ignore(
@@ -836,6 +837,15 @@ async def _ingest_programs(
                     stats["skipped"] += 1
                     await engine.dispose()
                     continue
+                if not refresh and stype != "crawl":
+                    exists = (
+                        await session.execute(select(Source.id).where(Source.url == url).limit(1))
+                    ).first()
+                    if exists:
+                        click.echo(f"  [skip exists] {party_abbr}: {title}")
+                        stats["skipped"] += 1
+                        await engine.dispose()
+                        continue
 
                 if stype == "pdf" or url.lower().endswith(".pdf"):
                     content = None
@@ -1029,19 +1039,21 @@ async def _ingest_campaign_finance(year: int = 2023, election: str = "eduskuntav
     from sqlalchemy import func as sa_func
 
     from vaalikone.ingest.connectors.vaalirahoitus import (
-        EDUSKUNTAVAALIT_2023_FILES,
+        discover_finance_files,
         fetch_finance_rows,
     )
     from vaalikone.models.campaign_finance import CampaignFinance
 
     etype = ElectionType(election)
-    files = (
-        {"eduskuntavaalit": {"2023": EDUSKUNTAVAALIT_2023_FILES}}
-        .get(election, {}).get(str(year))
-    )
+    files = await discover_finance_files(election, year)
     if not files:
-        click.echo(f"No campaign finance files configured for {election} {year}.")
+        click.echo(f"Ei RAHOITUSRIVIT-tiedostoja vaaleille {election} {year}.")
         return {"added": 0, "skipped": 0}
+    # Ennakkoilmoitus ja lopullinen vaalirahoitusilmoitus kuvaavat samaa rahoitusta:
+    # käytä lopullista aina kun se on julkaistu, muuten summat lasketaan kahdesti.
+    superseded = []
+    if "vaalirahoitusilmoitus" in files and "ennakkoilmoitus" in files:
+        superseded.append(files.pop("ennakkoilmoitus").split("?", 1)[0])
 
     engine, async_session = await _get_session()
     async with async_session() as session:
@@ -1050,7 +1062,16 @@ async def _ingest_campaign_finance(year: int = 2023, election: str = "eduskuntav
         )
         election_row = election_row.scalar_one_or_none()
 
-        stats = {"added": 0, "skipped": 0}
+        stats = {"added": 0, "skipped": 0, "replaced": 0}
+        for base in superseded:
+            old = await session.execute(
+                delete(CampaignFinance).where(
+                    CampaignFinance.source_url.like(f"{escape_ilike(base)}%", escape="\\")
+                ).execution_options(synchronize_session=False)
+            )
+            if old.rowcount:
+                click.echo(f"  [poistettu] {old.rowcount} ennakkoilmoitusriviä")
+                stats["replaced"] += old.rowcount
         for label, url in files.items():
             existing = await session.execute(
                 select(sa_func.count(CampaignFinance.id)).where(
@@ -1063,6 +1084,16 @@ async def _ingest_campaign_finance(year: int = 2023, election: str = "eduskuntav
                 continue
             click.echo(f"  fetching {label}: {url[:80]}")
             rows = await fetch_finance_rows(url)
+            # Sama tiedosto vanhemmalla ?dl=-versiolla: korvataan uudella
+            base = url.split("?", 1)[0]
+            old = await session.execute(
+                delete(CampaignFinance).where(
+                    CampaignFinance.source_url.like(f"{escape_ilike(base)}%", escape="\\")
+                ).execution_options(synchronize_session=False)
+            )
+            if old.rowcount:
+                click.echo(f"  [korvattu] {old.rowcount} riviä vanhemmasta versiosta")
+                stats["replaced"] += old.rowcount
             for r in rows:
                 party = await _find_party(session, r.get("party_abbr") or "")
                 session.add(CampaignFinance(
@@ -1288,3 +1319,18 @@ def pohtiva(
     from vaalikone.ingest.harvesters import ingest_pohtiva
 
     asyncio.run(ingest_pohtiva(**kwargs))
+
+
+@ingest.command(name="group-speeches")
+@click.option("--since", default=2019, show_default=True, type=int, help="Vanhin valtiopäivävuosi")
+@click.option("--until", default=None, type=int, help="Uusin valtiopäivävuosi")
+@click.option("--max-results", default=None, type=int, help="Enintään N uusinta")
+@click.option("--queue", "queue", is_flag=True, help="Run as background Celery task")
+def group_speeches(since: int, until: int | None, max_results: int | None, queue: bool):
+    """Ryhmäpuheenvuorot: eduskuntaryhmien viralliset kannat täysistunnoissa (api.eduskunta.fi)."""
+    if queue:
+        _enqueue("ingest_group_speeches_task", since=since, until=until, max_results=max_results)
+        return
+    from vaalikone.ingest.harvesters import ingest_group_speeches
+
+    asyncio.run(ingest_group_speeches(since=since, until=until, max_results=max_results))

@@ -386,3 +386,117 @@ async def ingest_pohtiva(
         f"({stats['listed']} listattu)."
     )
     return stats
+
+
+# --- Eduskunta: ryhmäpuheenvuorot ----------------------------------------------------
+
+# eduskuntaryhma_tunnus "PS01~PERUSSUOMALAISTEN EDUSKUNTARYHMÄ" -> "ps"
+_GROUP_CODE_RE = re.compile(r"^([A-Za-z]+)\d*~")
+
+
+def group_code(puhuja: dict) -> str | None:
+    """Puhujan eduskuntaryhmän lyhenne puheenvuoron hetkellä (ei edustajan nykyinen puolue)."""
+    tunnus = (puhuja or {}).get("eduskuntaryhma_tunnus") or ""
+    m = _GROUP_CODE_RE.match(tunnus)
+    if m:
+        return m.group(1).lower()
+    return ((puhuja or {}).get("lisatieto") or "").strip().lower() or None
+
+
+def group_name(puhuja: dict) -> str | None:
+    tunnus = (puhuja or {}).get("eduskuntaryhma_tunnus") or ""
+    return tunnus.split("~", 1)[1].strip().capitalize() if "~" in tunnus else None
+
+
+async def ingest_group_speeches(
+    since: int = DEFAULT_POHTIVA_SINCE, until: int | None = None, max_results: int | None = None,
+) -> dict:
+    """Hae ryhmäpuheenvuorot (eduskuntaryhmän virallinen kanta) api.eduskunta.fi:stä."""
+    from vaalikone.cli.ingest import PARTY_MAP, _get_session, _store_document
+    from vaalikone.ingest.connectors.eduskunta import EduskuntaClient
+    from vaalikone.models.representative import Representative
+
+    client = EduskuntaClient()
+    rows, start, total = [], 0, None
+    click.echo("Haetaan ryhmäpuheenvuorot (api.eduskunta.fi, puheenvuorotyyppikoodi R)...")
+    while total is None or start < total:
+        data = await client.search_group_speeches(max_results=500, start_from=start)
+        batch = data.get("results", [])
+        total = data.get("searchMetadata", {}).get("totalResultCount", 0)
+        if not batch:
+            break
+        start += len(batch)
+        for r in batch:
+            puh = r.get("puheenvuoro") or {}
+            year = int(puh.get("valtiopaivavuosi") or 0)
+            if year >= since and (until is None or year <= until):
+                rows.append(puh)
+    rows.sort(key=lambda p: p.get("aloitushetki") or "", reverse=True)
+    if max_results:
+        rows = rows[:max_results]
+    click.echo(f"{total} ryhmäpuheenvuoroa, {len(rows)} vuosilta {since}–{until or 'nyt'}.")
+
+    stats = {"total": total, "selected": len(rows), "stored": 0, "skipped": 0, "no_party": 0}
+    engine, async_session = await _get_session()
+    try:
+        async with async_session() as session:
+            party_rows = (await session.execute(select(Party))).scalars()
+            parties = {p.abbreviation: p.id for p in party_rows}
+            reps = dict((await session.execute(
+                select(Representative.person_id, Representative.id)
+            )).all())
+            for n, puh in enumerate(rows, 1):
+                text = (puh.get("puheenvuoro") or "").strip()
+                if not text:
+                    stats["skipped"] += 1
+                    continue
+                puhuja = puh.get("puhuja") or {}
+                code = group_code(puhuja)
+                abbr = PARTY_MAP.get(code or "", (code or "").upper())
+                party_id = parties.get(abbr)
+                if not party_id:
+                    # esim. Sininen eduskuntaryhmä (UV): ei puolueena kannassa
+                    stats["no_party"] += 1
+                asia = (puh.get("asia") or {}).get("fi") or {}
+                speaker = f"{puhuja.get('etunimi', '')} {puhuja.get('sukunimi', '')}".strip()
+                published = None
+                try:
+                    published = datetime.fromisoformat(puh.get("aloitushetki"))
+                except (TypeError, ValueError):
+                    pass
+                ok = await _store_document(
+                    session,
+                    source_type=SourceType.API,
+                    url=f"{client.search_url}/puheenvuoro/{puh.get('id')}",
+                    title=(
+                        f"Ryhmäpuheenvuoro {abbr or code or '?'} {puh.get('valtiopaiva', '')}: "
+                        f"{asia.get('nimeketeksti') or asia.get('eduskuntatunnus') or ''}"
+                    )[:300],
+                    text=text,
+                    content_type=ContentType.PUHEENVUORO,
+                    party_id=party_id,
+                    representative_id=reps.get(str(puhuja.get("henkilonro") or "")),
+                    published_at=published,
+                    metadata={
+                        "speech_id": puh.get("id"),
+                        "speech_type": "ryhmäpuheenvuoro",
+                        "eduskuntaryhma": group_name(puhuja),
+                        "speaker": speaker,
+                        "valtiopaiva": puh.get("valtiopaiva"),
+                        "year": int(puh.get("valtiopaivavuosi") or 0) or None,
+                        "eduskuntatunnus": asia.get("eduskuntatunnus"),
+                        "asia": asia.get("nimeketeksti"),
+                    },
+                )
+                stats["stored" if ok else "skipped"] += 1
+                if n % 100 == 0:
+                    await session.commit()
+                    click.echo(f"  {n}/{len(rows)}...")
+            await session.commit()
+    finally:
+        await engine.dispose()
+    click.echo(
+        f"\nValmis: {stats['stored']} tallennettu, {stats['skipped']} ohitettu, "
+        f"{stats['no_party']} ilman kannan puoluetta."
+    )
+    return stats

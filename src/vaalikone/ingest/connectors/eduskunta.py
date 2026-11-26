@@ -117,6 +117,16 @@ class EduskuntaClient:
             max_results=max_results, start_from=start_from,
         )
 
+    async def search_group_speeches(
+        self, max_results: int = 500, start_from: int = 0
+    ) -> dict:
+        """Ryhmäpuheenvuorot (puheenvuorotyyppikoodi R): eduskuntaryhmän virallinen kanta."""
+        return await self.search(
+            category="puheenvuoro",
+            expression={"property": "puheenvuorotyyppikoodi", "match": "R"},
+            max_results=max_results, start_from=start_from, combined_search=False,
+        )
+
     async def search_written_questions(
         self, max_results: int = 100, start_from: int = 0, valtiopaiva: str | None = None
     ) -> dict:

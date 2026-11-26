@@ -56,13 +56,8 @@ sources:
     year: 2026
   # Ruotsinkielinen käännös: https://www.vihreat.fi/wp-content/uploads/2026/06/Partiprogram2026.pdf
   # (ei oletuksena — käännökset kaksinkertaistaisivat puolueen painon haussa)
-  - party: VAS
-    kind: vaaliohjelma
-    type: crawl
-    url: "https://vasemmisto.fi/ohjelmat/"
-    title: "Vasemmistoliiton ohjelmat"
-    depth: 1
-    max_pages: 20
+  # VAS: ohjelmat listattu alla yksitellen (sivustohaku vasemmisto.fi/ohjelmat/ keräsi myös
+  # tietosuoja- ja lahjoitussivuja, ks. löytöajo 2026-11-26)
   - party: RKP
     kind: vaaliohjelma
     type: pdf
@@ -163,6 +158,307 @@ sources:
     type: pdf
     url: "https://www.perussuomalaiset.fi/wp-content/uploads/2025/12/PS-runkolehti-4_2025_netti.pdf"
     title: "Perussuomalaisten vaihtoehtoinen budjetti 2026"
+
+  # --- Löytöajo 2026-11-26: puolueiden sivukartat (lastmod ≥ 9/2025), vaihtoehtobudjetit 2027, 2026-ohjelmat ---
+  # Keskusta (keskusta.fi) estää harvesterin 11/2026 (403) — Keskustan ohjelmat tulevat Pohtivasta.
+  - party: SDP
+    kind: puolueohjelma
+    type: pdf
+    url: "https://www.sdp.fi/app/uploads/sites/2/2026/06/poliittinen_ohjelma_2026.pdf"
+    title: "SDP:n poliittinen ohjelma 2026"
+    year: 2026
+  - party: SDP
+    kind: varjobudjetti
+    type: pdf
+    url: "https://www.sdp.fi/app/uploads/sites/2/2026/11/sdp-vaihtoehtobudjetti-2027.pdf"
+    title: "SDP:n vaihtoehtobudjetti 2027"
+    year: 2026
+  - party: KOK
+    kind: puolueohjelma
+    type: web
+    url: "https://www.kokoomus.fi/velkajarruohjelma/"
+    title: "Kokoomuksen velkajarruohjelma"
+    year: 2026
+  - party: KOK
+    kind: puolueohjelma
+    type: web
+    url: "https://www.kokoomus.fi/kokoomuksen-eduskuntaryhman-mikro-ja-yksinyrittajyysohjelma/"
+    title: "Kokoomuksen eduskuntaryhmän mikro- ja yksinyrittäjyysohjelma"
+    year: 2026
+  - party: KOK
+    kind: puolueohjelma
+    type: pdf
+    url: "https://www.kokoomus.fi/wp-content/uploads/2026/08/Vammaispoliittinen-ohjelma-2026.pdf"
+    title: "Kokoomuksen vammaispoliittinen ohjelma 2026"
+    year: 2026
+  - party: KOK
+    kind: puolueohjelma
+    type: pdf
+    url: "https://www.kokoomus.fi/wp-content/uploads/2026/06/Tekoalyraportti-2026.pdf"
+    title: "Kokoomuksen eduskuntaryhmän tekoälyraportti 2026"
+    year: 2026
+  - party: KOK
+    kind: puolueohjelma
+    type: pdf
+    url: "https://www.kokoomus.fi/wp-content/uploads/2026/06/Startup-raportti-taitettu.pdf"
+    title: "Kokoomuksen eduskuntaryhmän startup-ohjelma 2026"
+    year: 2026
+  - party: KOK
+    kind: puolueohjelma
+    type: web
+    url: "https://www.kokoomus.fi/kokoomuksen-talouspoliittinen-ohjelma-nyt-on-aika-laittaa-talous-kuntoon/"
+    title: "Kokoomuksen talouspoliittinen ohjelma: Nyt on aika laittaa talous kuntoon"
+    year: 2023
+  - party: KOK
+    kind: puolueohjelma
+    type: web
+    url: "https://www.kokoomus.fi/ei-hyvinvointia-ilman-turvallisuutta-kokoomuksen-ohjelma-suomen-kokonaisturvallisuuden-vahvistamiseksi/"
+    title: "Ei hyvinvointia ilman turvallisuutta – Kokoomuksen kokonaisturvallisuusohjelma"
+  - party: KOK
+    kind: puolueohjelma
+    type: web
+    url: "https://www.kokoomus.fi/kokoomuksen-eduskuntaryhman-metsalinjaus-menestysta-metsista/"
+    title: "Kokoomuksen eduskuntaryhmän metsälinjaus: Menestystä metsistä"
+  - party: KOK
+    kind: puolueohjelma
+    type: web
+    url: "https://www.kokoomus.fi/kokoomuksen-tietopoliittinen-ohjelma-2023/"
+    title: "Kokoomuksen tietopoliittinen ohjelma 2023"
+    year: 2023
+  - party: KOK
+    kind: puolueohjelma
+    type: web
+    url: "https://www.kokoomus.fi/kokoomuksen-paihdepoliittiset-linjaukset/"
+    title: "Kokoomuksen päihdepoliittiset linjaukset"
+  - party: KOK
+    kind: varjobudjetti
+    type: web
+    url: "https://www.kokoomus.fi/toivon-polku-kokoomuksen-vaihtoehtobudjetti/"
+    title: "Toivon polku – Kokoomuksen vaihtoehtobudjetti 2021"
+    year: 2020
+  - party: PS
+    kind: puolueohjelma
+    type: pdf
+    url: "https://www.perussuomalaiset.fi/wp-content/uploads/2026/10/Saastolista2027-FIN.pdf"
+    title: "Perussuomalaisten sopeutusohjelma 2028–2031 (säästölista)"
+    year: 2026
+  - party: VIHR
+    kind: varjobudjetti
+    type: pdf
+    url: "https://www.vihreat.fi/wp-content/uploads/2026/11/Vihreat_Vaihtoehtobudjetti_2027_WEB.pdf"
+    title: "Vihreiden vaihtoehtobudjetti 2027"
+    year: 2026
+  - party: VIHR
+    kind: puolueohjelma
+    type: pdf
+    url: "https://www.vihreat.fi/wp-content/uploads/2026/09/Maahanmuuttopoliittinen_ohjelma2026.pdf"
+    title: "Vihreiden maahanmuuttopoliittinen ohjelma 2026"
+    year: 2026
+  - party: VIHR
+    kind: puolueohjelma
+    type: web
+    url: "https://www.vihreat.fi/ohjelmat/sosiaaliturvapoliittinen-ohjelma/"
+    title: "Vihreiden sosiaaliturvapoliittinen ohjelma 2026"
+    year: 2026
+  - party: VIHR
+    kind: puolueohjelma
+    type: web
+    url: "https://www.vihreat.fi/ohjelmat/askeleet-translain-uudistamiseksi/"
+    title: "Vihreät: Askeleet translain uudistamiseksi"
+    year: 2026
+  - party: VAS
+    kind: puolueohjelma
+    type: web
+    url: "https://vasemmisto.fi/ohjelmat/tavoiteohjelma/"
+    title: "Yhdessä vahvempia – Vasemmistoliiton tavoiteohjelma 2025–2028"
+    year: 2025
+  - party: VAS
+    kind: varjobudjetti
+    type: web
+    url: "https://vasemmisto.fi/ohjelmat/vasemmistoliiton-vaihtoehtobudjetti-2027/"
+    title: "Vasemmistoliiton vaihtoehtobudjetti 2027"
+    year: 2026
+  - party: VAS
+    kind: puolueohjelma
+    type: web
+    url: "https://vasemmisto.fi/ohjelmat/kotimaisten-kielivahemmistojen-ohjelma/"
+    title: "Vasemmistoliiton kotimaisten kielivähemmistöjen ohjelma"
+    year: 2026
+  - party: VAS
+    kind: puolueohjelma
+    type: web
+    url: "https://vasemmisto.fi/ohjelmat/teollisuuspoliittinen-ohjelma/"
+    title: "Vasemmistoliiton teollisuuspoliittinen ohjelma"
+    year: 2026
+  - party: VAS
+    kind: puolueohjelma
+    type: web
+    url: "https://vasemmisto.fi/ohjelmat/tulevaisuuden-talous-ekologisesti-ja-sosiaalisesti-kestava-tulevaisuus/"
+    title: "Tulevaisuuden talous – ekologisesti ja sosiaalisesti kestävä tulevaisuus"
+    year: 2026
+  - party: VAS
+    kind: puolueohjelma
+    type: web
+    url: "https://vasemmisto.fi/ohjelmat/teknologian-ja-tekoalyn-on-hyodytettava-kaikkia-vasemmistoliiton-teknologiapoliittisia-avauksia/"
+    title: "Vasemmistoliiton teknologiapoliittiset avaukset: teknologian ja tekoälyn on hyödytettävä kaikkia"
+    year: 2026
+  - party: VAS
+    kind: puolueohjelma
+    type: web
+    url: "https://vasemmisto.fi/ohjelmat/vasemmistoliiton-eduskuntaryhman-linjat-luontokadon-pysayttamiseksi/"
+    title: "Vasemmistoliiton eduskuntaryhmän linjat luontokadon pysäyttämiseksi"
+    year: 2026
+  - party: VAS
+    kind: puolueohjelma
+    type: web
+    url: "https://vasemmisto.fi/ohjelmat/vasemmistoliiton-pienyrittajaohjelma/"
+    title: "Vasemmistoliiton pienyrittäjäohjelma"
+    year: 2026
+  - party: VAS
+    kind: puolueohjelma
+    type: web
+    url: "https://vasemmisto.fi/ohjelmat/vasemmistoliiton-eduskuntaryhman-ratkaisuja-koulutuksen-tasa-arvon-vahvistamiseksi/"
+    title: "Vasemmistoliiton eduskuntaryhmän ratkaisuja koulutuksen tasa-arvoon"
+    year: 2026
+  - party: VAS
+    kind: puolueohjelma
+    type: web
+    url: "https://vasemmisto.fi/ohjelmat/1010-keinoa-maa-ja-metsatalouden-reiluun-siirtymaan/"
+    title: "10+10 keinoa maa- ja metsätalouden reiluun siirtymään"
+    year: 2026
+  - party: VAS
+    kind: puolueohjelma
+    type: web
+    url: "https://vasemmisto.fi/ohjelmat/parempaa-tyota-vasemmistoliiton-10-keinoa-tyollisyyden-ja-tyoelaman-parantamiseksi/"
+    title: "Parempaa työtä – Vasemmistoliiton 10 keinoa"
+    year: 2026
+  - party: VAS
+    kind: puolueohjelma
+    type: web
+    url: "https://vasemmisto.fi/ohjelmat/oikeus-arvokkaaseen-vanhuuteen-kuuluu-jokaiselle/"
+    title: "Oikeus arvokkaaseen vanhuuteen kuuluu jokaiselle"
+    year: 2026
+  - party: VAS
+    kind: puolueohjelma
+    type: web
+    url: "https://vasemmisto.fi/ohjelmat/oikeus-omaan-kotiin-vasemmistoliiton-viisi-ratkaisua-kestavaan-asuntopolitiikkaan/"
+    title: "Oikeus omaan kotiin – Vasemmistoliiton viisi ratkaisua asumiseen"
+    year: 2026
+  - party: VAS
+    kind: puolueohjelma
+    type: web
+    url: "https://vasemmisto.fi/ohjelmat/vasemmistoliiton-viisi-vaatimusta-sosiaali-ja-terveydenhuollon-pelastamiseksi/"
+    title: "Vasemmistoliiton viisi vaatimusta sosiaali- ja terveydenhuoltoon"
+    year: 2026
+  - party: VAS
+    kind: puolueohjelma
+    type: web
+    url: "https://vasemmisto.fi/ohjelmat/sote-ammattilaisista-on-pidettava-kiinni/"
+    title: "Sote-ammattilaisista on pidettävä kiinni – Vasemmistoliiton 7 keinoa"
+    year: 2026
+  - party: RKP
+    kind: puolueohjelma
+    type: pdf
+    url: "https://sfp.fi/wp-content/uploads/2025/08/Partiprogram-2025_v2_fin.pdf"
+    title: "RKP:n puolueohjelma 2025"
+    year: 2025
+  - party: RKP
+    kind: puolueohjelma
+    type: web
+    url: "https://sfp.fi/fi/politiikka/paatokset-ja-poliittiset-ohjelmat/rkpn-saamelaispoliittinen-toimenpideohjelma-2026/"
+    title: "RKP:n saamelaispoliittinen toimenpideohjelma 2026"
+    year: 2026
+  - party: RKP
+    kind: puolueohjelma
+    type: web
+    url: "https://sfp.fi/fi/politiikka/paatokset-ja-poliittiset-ohjelmat/rkpn-kotoutumispoliittinen-ohjelma-2026/"
+    title: "RKP:n kotoutumispoliittinen ohjelma"
+    year: 2026
+  - party: RKP
+    kind: puolueohjelma
+    type: web
+    url: "https://sfp.fi/fi/politiikka/paatokset-ja-poliittiset-ohjelmat/rkpn-toimenpiteet-startup-ystavallisemman-suomen-puolesta/"
+    title: "RKP:n toimenpiteet startup-ystävällisemmän Suomen puolesta"
+    year: 2026
+  - party: RKP
+    kind: puolueohjelma
+    type: web
+    url: "https://sfp.fi/fi/politiikka/paatokset-ja-poliittiset-ohjelmat/vauhtia-tyollisyyteen-ja-terveydenhuoltoa-johon-voi-luottaa/"
+    title: "RKP: Vauhtia työllisyyteen ja terveydenhuoltoon"
+    year: 2026
+  - party: RKP
+    kind: puolueohjelma
+    type: web
+    url: "https://sfp.fi/fi/politiikka/paatokset-ja-poliittiset-ohjelmat/10-toimenpidetta-jotta-yha-useampi-nuori-saisi-tyopaikan/"
+    title: "RKP: 10 toimenpidettä nuorten työllisyyden vahvistamiseksi"
+    year: 2026
+  - party: RKP
+    kind: puolueohjelma
+    type: web
+    url: "https://sfp.fi/fi/politiikka/paatokset-ja-poliittiset-ohjelmat/rkpn-tasa-arvopoliittinen-ohjelma/"
+    title: "RKP:n tasa-arvopoliittinen ohjelma"
+    year: 2026
+  - party: KD
+    kind: puolueohjelma
+    type: pdf
+    url: "https://www.kd.fi/app/uploads/2026/11/Koulutuspoliittinen-ohjelma_10-2026.pdf"
+    title: "KD:n koulutuspoliittinen ohjelma 2026"
+    year: 2026
+  - party: KD
+    kind: puolueohjelma
+    type: pdf
+    url: "https://www.kd.fi/app/uploads/2026/06/vammaispoliittinenohjelma_2026.pdf"
+    title: "KD:n vammaispoliittinen ohjelma 2026"
+    year: 2026
+  - party: KD
+    kind: puolueohjelma
+    type: pdf
+    url: "https://www.kd.fi/app/uploads/2026/08/Ulko-ja-turvallisuuspoliittinen-ohjelma_2026_.pdf"
+    title: "KD:n ulko- ja turvallisuuspoliittinen ohjelma 2026"
+    year: 2026
+  - party: KD
+    kind: puolueohjelma
+    type: pdf
+    url: "https://www.kd.fi/app/uploads/2026/08/Ymparisto-energia-ja-ilmasto-ohjelma_2026_.pdf"
+    title: "KD:n ympäristö-, energia- ja ilmasto-ohjelma 2026"
+    year: 2026
+  - party: KD
+    kind: puolueohjelma
+    type: pdf
+    url: "https://www.kd.fi/app/uploads/2026/09/Tyollisyyspoliittinen-ohjelma.pdf"
+    title: "KD:n työllisyyspoliittinen ohjelma 2026"
+    year: 2026
+  - party: KD
+    kind: puolueohjelma
+    type: pdf
+    url: "https://www.kd.fi/app/uploads/2026/09/yrittajyysohjelma_2026.pdf"
+    title: "KD:n yrittäjyysohjelma 2026"
+    year: 2026
+  - party: LIB
+    kind: vaaliohjelma
+    type: web
+    url: "https://liberaalipuolue.fi/vaalit-2027/eduskuntavaaliohjelma-2027/"
+    title: "Liberaalipuolueen eduskuntavaaliohjelma 2027"
+    year: 2027
+  - party: SML
+    kind: vaaliohjelma
+    type: pdf
+    url: "https://sinimustaliike.fi/wp-content/uploads/2026/06/eduskuntavaaliohjelma-2027.pdf"
+    title: "Sinimustan Liikkeen eduskuntavaaliohjelma 2027"
+    year: 2027
+  - party: VAPL
+    kind: puolueohjelma
+    type: web
+    url: "https://vapaudenliitto.fi/koulutuspoliittinen-ohjelma/"
+    title: "Vapauden liiton koulutuspoliittinen ohjelma"
+    year: 2026
+  - party: LIIK
+    kind: varjobudjetti
+    type: pdf
+    url: "https://www.liikenyt.fi/s/Liike-Nyt-Vaihtoehtobudjetti-2027"
+    title: "Liike Nytin vaihtoehtobudjetti 2027"
+    year: 2026
+
 
   # --- Hallitusohjelmat (ei puoluesidonnainen) ---
   - kind: hallitusohjelma

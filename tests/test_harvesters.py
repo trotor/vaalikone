@@ -15,6 +15,8 @@ from vaalikone.ingest.connectors.pohtiva import (
 from vaalikone.ingest.connectors.puoluerekisteri import parse_registered, platform_pdf_url
 from vaalikone.ingest.harvesters import (
     containment,
+    group_code,
+    group_name,
     is_near_duplicate,
     load_parties_yaml,
     pohtiva_code_for,
@@ -215,3 +217,55 @@ async def test_store_document_language_and_replace(db_session):
     )).scalars().all()
     assert [d.title for d in docs] == ["Uusi"]
     assert await _count(db_session, Embedding, Embedding.document_id == doc.id) == 0
+
+
+def test_group_code_prefers_group_at_speech_time():
+    puhuja = {
+        "lisatieto": "ps",
+        "eduskuntaryhma_tunnus": "SD01~SOSIALIDEMOKRAATTINEN EDUSKUNTARYHMÄ",
+    }
+    assert group_code(puhuja) == "sd"
+    assert group_name(puhuja) == "Sosialidemokraattinen eduskuntaryhmä"
+    assert group_code({"lisatieto": "kok", "eduskuntaryhma_tunnus": None}) == "kok"
+    assert group_code({"eduskuntaryhma_tunnus": "UV01~SININEN EDUSKUNTARYHMÄ"}) == "uv"
+    assert group_code({}) is None
+
+
+# --- vaalirahoitus ---
+
+
+def test_parse_finance_csv_quoted_utf8():
+    from vaalikone.ingest.connectors.vaalirahoitus import parse_finance_csv
+
+    text = (
+        "'Tukija';'Tukijan y-tunnus/yhdistysrekisterinumero jos on';'Tukijan etunimet';"
+        "'Tukijan sukunimi';'Tukijan kotikunta jos on';'Tukilahteen lomakenumerot';"
+        "'Lainan nimi';'Lainan takaisinmaksuaika/laina-aika';'Tuen maara';"
+        "'Tuen saajan etunimet';'Tuen saajan Sukunimi';'Vaalipiiri / Kunta';"
+        "'Tuen saajan puolue';\n"
+        "'Alajärven Sosialidemokraatit ry';'3028070-1';'';'';'';'2.6';'';'';'1 830,05';"
+        "'Jukka Pekka';'Matintupa';'Alajärvi';'SDP'\n"
+    )
+    [row] = parse_finance_csv(text, "u")
+    assert row["donor_name"] == "Alajärven Sosialidemokraatit ry"
+    assert row["amount"] == 1830.05
+    assert row["recipient_last_name"] == "Matintupa"
+    assert row["constituency"] == "Alajärvi"
+    assert row["party_abbr"] == "SDP"
+    assert row["donor_first_names"] is None
+
+
+def test_parse_finance_listing_picks_rahoitusrivit_only():
+    from vaalikone.ingest.connectors.vaalirahoitus import parse_finance_listing
+
+    base = "/fi/index/vaalirahoitus/haetietoavaalirahoitusilmoituksista/tutkitietoaineistoja"
+    html = (
+        f'<a href="{base}/kuntavaalit2025/E_VI_kuntavaalit2025.csv?dl=1">x</a>'
+        f'<a href="{base}/kuntavaalit2025/RAHOITUSRIVIT_E_VI_kuntavaalit2025.csv?dl=2">x</a>'
+        f'<a href="{base}/kuntavaalit2025/RAHOITUSRIVIT_E_EI_kuntavaalit2025.csv?dl=3">x</a>'
+        f'<a href="{base}/aluevaalit2025/RAHOITUSRIVIT_E_VI_aluevaalit2025.csv?dl=4">x</a>'
+    )
+    files = parse_finance_listing(html, "kuntavaalit", 2025)
+    assert set(files) == {"vaalirahoitusilmoitus", "ennakkoilmoitus"}
+    assert files["vaalirahoitusilmoitus"].endswith("RAHOITUSRIVIT_E_VI_kuntavaalit2025.csv?dl=2")
+    assert files["vaalirahoitusilmoitus"].startswith("https://www.vaalirahoitusvalvonta.fi/")
