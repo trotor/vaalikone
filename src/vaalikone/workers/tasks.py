@@ -57,7 +57,7 @@ def ingest_representatives_task(self):
 
 @app.task(bind=True, max_retries=2)
 def ingest_votes_task(
-    self, since: int = 2019, until: int | None = None, member_votes_since: int = 2023,
+    self, since: int = 2019, until: int | None = None, member_votes_since: int = 2019,
     refresh: bool = False, drop_legacy: bool = False,
 ):
     from vaalikone.ingest.votes import ingest_votes
@@ -67,6 +67,16 @@ def ingest_votes_task(
             since=since, until=until, member_votes_since=member_votes_since,
             refresh=refresh, drop_legacy=drop_legacy,
         ))
+    except Exception as e:
+        raise self.retry(exc=e, countdown=60)
+
+
+@app.task(bind=True, max_retries=2)
+def ingest_vote_documents_task(self, refresh: bool = False):
+    from vaalikone.ingest.votes import ingest_vote_documents
+
+    try:
+        return asyncio.run(ingest_vote_documents(refresh=refresh))
     except Exception as e:
         raise self.retry(exc=e, countdown=60)
 

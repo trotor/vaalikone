@@ -50,9 +50,9 @@
 - [x] Ryhmäpuheenvuorot 2019→ (`ingest group-speeches`, 1 421 kpl) (2026-11-26)
 - [x] Vaalirahoitus korjattu (CSV:n heittomerkkilainaus + UTF-8: kaikki vanhat rivit olivat tyhjiä) ja laajennettu EU 2024, PV 2024, KV 2025 (2026-11-26)
 - [x] Vaihtoehtobudjetit 2027 (SDP, VIHR, VAS, LIIK) ja 2026-ohjelmat sivukarttojen löytöajolla (2026-11-26)
-- [x] Äänestykset uudesta api.eduskunta.fi:stä: `votings` 2019→ ryhmäjakaumineen, edustajakohtaiset äänet 2023→; vanhan avoindata-taulun rikkinäiset rivit (99,97 % "poissa", ei päivämääriä) korvattu (2026-11-26)
-- [ ] Edustajakohtaiset äänet myös 2019–2022 (`ingest votes --member-votes-since 2019`, ~730 000 riviä lisää) — tarvitaanko?
-- [ ] Äänestykset RAG-korpukseen (dokumentti per asia ryhmäjakaumineen), jotta chat löytää ne ilman MCP:tä
+- [x] Äänestykset uudesta api.eduskunta.fi:stä: `votings` 2019→ ryhmäjakaumineen, edustajakohtaiset äänet 2019→ (1,3 milj.); vanhan avoindata-taulun rikkinäiset rivit (99,97 % "poissa", ei päivämääriä) korvattu (2026-11-26)
+- [x] Äänestykset RAG-korpukseen: 712 asiakohtaista dokumenttia ryhmien kantoineen (`ingest vote-documents`) (2026-11-26)
+- [x] Roskadokumentit poistettu: 119 kpl (tietosuoja-, yhteystieto- ja jäsensivut, navigaatiosivut, ohjelmaksi tyypitetyt laskeutumissivut, Pohtivan listasivut, tarkat kaksoiskappaleet) (2026-11-26)
 - [ ] Kirjalliset kysymykset nykyiseltä vaalikaudelta (hakuehto `valtiopaiva` ei suodata valtiopaivaasia-kategoriassa — selvitä oikea kenttä)
 - [ ] Eduskuntavaaliohjelmat 2027 — puolueet julkaisevat talvella 2026–27; lisää `config/sources.yaml`:iin ja aja `ingest pohtiva --since 2026` kun FSD on arkistoinut
 - [ ] Puolueiden säännöt rekisteristä (`publicapi/attachment/{id}/2/rules.pdf`) — tarvitaanko?

@@ -853,7 +853,7 @@ def representatives(queue: bool):
 @click.option("--since", default=2019, show_default=True, type=int,
               help="Äänestykset tästä valtiopäivävuodesta alkaen.")
 @click.option("--until", default=None, type=int, help="Viimeinen vuosi (oletus: kuluva).")
-@click.option("--member-votes-since", default=2023, show_default=True, type=int,
+@click.option("--member-votes-since", default=2019, show_default=True, type=int,
               help="Edustajakohtaiset äänet tästä vuodesta (~200 riviä/äänestys).")
 @click.option("--refresh", is_flag=True, help="Korvaa jo tallennetut äänestykset.")
 @click.option("--drop-legacy", is_flag=True,
@@ -870,6 +870,19 @@ def votes(since: int, until: int | None, member_votes_since: int, refresh: bool,
     from vaalikone.ingest.votes import ingest_votes
 
     asyncio.run(ingest_votes(**kwargs))
+
+
+@ingest.command(name="vote-documents")
+@click.option("--refresh", is_flag=True, help="Rakenna kaikki dokumentit uudelleen.")
+@click.option("--queue", "queue", is_flag=True, help="Run as background Celery task")
+def vote_documents(refresh: bool, queue: bool):
+    """Äänestykset hakukorpukseen: dokumentti per asia ryhmien kantoineen (aja votesin jälkeen)."""
+    if queue:
+        _enqueue("ingest_vote_documents_task", refresh=refresh)
+        return
+    from vaalikone.ingest.votes import ingest_vote_documents
+
+    asyncio.run(ingest_vote_documents(refresh=refresh))
 
 @ingest.command()
 @click.argument("query")

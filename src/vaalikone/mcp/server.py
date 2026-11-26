@@ -319,7 +319,7 @@ async def search_votes(
     subject_contains: str | None = None,
     limit: int = 20,
 ) -> str:
-    """Hae kansanedustajien äänestyksiä (edustajakohtaiset äänet, vaalikausi 2023→).
+    """Hae kansanedustajien äänestyksiä (edustajakohtaiset äänet 2019→).
 
     Args:
         representative: Kansanedustajan nimi (esim. "Marin")

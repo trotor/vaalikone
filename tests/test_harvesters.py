@@ -347,3 +347,25 @@ def test_parse_voting_group_from_name_when_code_missing():
     groups = parse_voting(a)["voting"]["group_results"]
     assert groups["vkk"]["party"] == "VKK"
     assert "?" not in groups
+
+
+def test_voting_document_text_and_url():
+    from vaalikone.ingest.votes import (
+        parse_voting,
+        vote_document_url,
+        voting_document_text,
+    )
+    from vaalikone.models.voting import Voting
+
+    v = Voting(**parse_voting(_voting_fixture())["voting"])
+    text = voting_document_text([v])
+    assert text.startswith("Eduskunnan täysistuntoäänestykset — HE 156/2025 vp: Hallituksen")
+    assert "Tulos: jaa 3, ei 1, tyhjä 0, poissa 0" in text
+    assert "- SDP: ei (ei 1)" in text
+    assert "- KOK: jaa (jaa 1)" in text
+    # ryhmään kuulumaton näkyy ryhmän nimellä
+    assert "- Eduskuntaryhmään kuulumaton: jaa (jaa 1)" in text
+    url = vote_document_url("HE 156/2025 vp", v.item_title)
+    assert url.startswith("https://api.eduskunta.fi/aanestykset/HE%20156%2F2025%20vp/")
+    assert url == vote_document_url("HE 156/2025 vp", v.item_title)
+    assert url != vote_document_url("HE 156/2025 vp", "Pääluokka 28")

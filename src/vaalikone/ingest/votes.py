@@ -4,9 +4,9 @@ CLI: ``vaalikone ingest votes``.
 
 - ``votings``: yksi rivi äänestystä kohden (otsikko, asia, käsittelyvaihe, tulos ja
   eduskuntaryhmien jakaumat äänestyshetken ryhmän mukaan).
-- ``votes``: edustajakohtaiset äänet (``subject`` = äänestyksen tunniste). Rivejä
-  on ~200 äänestystä kohden, joten oletuksena ne haetaan vain kuluvalta
-  vaalikaudelta (``--member-votes-since``), äänestykset koko jaksolta.
+- ``votes``: edustajakohtaiset äänet (``subject`` = äänestyksen tunniste), ~200 riviä
+  äänestystä kohden; alkuvuosi erikseen (``--member-votes-since``).
+- ``ingest_vote_documents``: asiakohtaiset AANESTYS-dokumentit hakukorpukseen.
 
 Vanha ``avoindata.eduskunta.fi``-taulu (SaliDBAanestysEdustaja) on poistumassa;
 sen rivien tunnisteet (numeerinen AanestysId) eivät vastaa uusia, ks. ``--drop-legacy``.
@@ -25,7 +25,7 @@ from vaalikone.models.vote import Vote, VoteChoice
 from vaalikone.models.voting import Voting
 
 DEFAULT_VOTINGS_SINCE = 2019
-DEFAULT_MEMBER_VOTES_SINCE = 2023  # vaalikausi 2023–2027
+DEFAULT_MEMBER_VOTES_SINCE = 2019
 PAGE_SIZE = 100  # palvelun yläraja
 MAX_PASSES = 3
 
@@ -341,3 +341,129 @@ async def _store_voting(session, parsed: dict, reps: dict, with_members: bool, s
     if rows:
         await session.execute(insert(Vote), rows)
         stats["member_votes"] += len(rows)
+
+
+# --- äänestykset hakukorpukseen (RAG) ---
+
+VOTE_DOC_URL_PREFIX = "https://api.eduskunta.fi/aanestykset/"
+_LABELS = {"jaa": "jaa", "ei": "ei", "tyhja": "tyhjä", "poissa": "poissa"}
+
+
+def vote_document_url(document_ref: str | None, item_title: str | None) -> str:
+    """Pysyvä tunniste asialle (asiakirja + kohta; budjetissa kohta = pääluokka)."""
+    import hashlib
+    from urllib.parse import quote
+
+    item = hashlib.sha1((item_title or "").encode()).hexdigest()[:12]
+    return f"{VOTE_DOC_URL_PREFIX}{quote(document_ref or '-', safe='')}/{item}"
+
+
+def _group_line(code: str, g: dict) -> str:
+    counts = {k: g.get(k, 0) for k in _LABELS}
+    voted = {k: v for k, v in counts.items() if k != "poissa" and v}
+    stance = max(voted, key=voted.get) if voted else "poissa"
+    detail = ", ".join(f"{_LABELS[k]} {v}" for k, v in counts.items() if v)
+    return f"- {g.get('party') or g.get('name') or code}: {_LABELS[stance]} ({detail})"
+
+
+def voting_document_text(votings: list[Voting]) -> str:
+    """Asian äänestykset luettavaksi tekstiksi: tulos ja eduskuntaryhmien kannat.
+
+    Jokainen äänestys alkaa asiakirjatunnuksella, jotta pilkottu teksti säilyttää
+    yhteyden asiaan.
+    """
+    first = votings[0]
+    head = ": ".join(x for x in (first.document_ref, first.item_title) if x)
+    days = sorted(v.voted_at.date().isoformat() for v in votings if v.voted_at)
+    lines = [
+        f"Eduskunnan täysistuntoäänestykset — {head}",
+        f"Äänestyksiä {len(votings)}"
+        + (f", {days[0]}–{days[-1]}" if days else "")
+        + ". Eduskuntaryhmien kannat äänestyshetken ryhmän mukaan.",
+        "",
+    ]
+    for v in votings:
+        r = v.result or {}
+        day = v.voted_at.date().isoformat() if v.voted_at else ""
+        lines.append(f"{v.document_ref or ''} {day}: {v.title or ''} ({v.stage or ''})".strip())
+        lines.append(
+            "Tulos: " + ", ".join(f"{_LABELS[k]} {r.get(k) or 0}" for k in _LABELS)
+        )
+        gov = v.government_opposition or {}
+        if gov:
+            lines.append("; ".join(
+                f"{name}: jaa {c.get('jaa') or 0}, ei {c.get('ei') or 0}"
+                for name, c in gov.items()
+            ))
+        groups = sorted((v.group_results or {}).items(), key=lambda kv: -sum(
+            kv[1].get(k, 0) for k in _LABELS
+        ))
+        lines.extend(_group_line(code, g) for code, g in groups)
+        lines.append("")
+    return "\n".join(lines).strip()
+
+
+async def ingest_vote_documents(refresh: bool = False) -> dict:
+    """Kokoa ``votings``-taulusta dokumentti per asia (asiakirja + kohta) hakukorpukseen.
+
+    Ei verkkoliikennettä. Dokumentti korvataan, kun asian äänestysmäärä muuttuu
+    (embeddingit poistuvat samalla; aja ``ingest embed`` perään).
+    """
+    from vaalikone.cli.ingest import _get_session, _store_document
+    from vaalikone.models.document import ContentType
+    from vaalikone.models.source import Source, SourceType
+
+    stats = {"matters": 0, "stored": 0, "unchanged": 0}
+    engine, async_session = await _get_session()
+    try:
+        async with async_session() as session:
+            votings = (await session.execute(
+                select(Voting).where(Voting.cancelled.is_(False))
+                .order_by(Voting.voted_at, Voting.number)
+            )).scalars().all()
+            matters: dict[tuple, list[Voting]] = {}
+            for v in votings:
+                matters.setdefault((v.document_ref, v.item_title), []).append(v)
+            stats["matters"] = len(matters)
+            known = {
+                url: (meta or {}).get("voting_count")
+                for url, meta in (await session.execute(
+                    select(Source.url, Source.metadata_)
+                    .where(Source.url.like(f"{VOTE_DOC_URL_PREFIX}%"))
+                )).all()
+            }
+            for n, ((ref, item), vs) in enumerate(matters.items(), 1):
+                url = vote_document_url(ref, item)
+                if not refresh and known.get(url) == len(vs):
+                    stats["unchanged"] += 1
+                    continue
+                last = vs[-1]
+                await _store_document(
+                    session,
+                    source_type=SourceType.API,
+                    url=url,
+                    title=f"Äänestykset: {': '.join(x for x in (ref, item) if x)}"[:300],
+                    text=voting_document_text(vs),
+                    content_type=ContentType.AANESTYS,
+                    published_at=last.voted_at,
+                    metadata={
+                        "document_ref": ref,
+                        "document_type": last.document_type,
+                        "item_title": item,
+                        "voting_count": len(vs),
+                        "voting_ids": [v.voting_id for v in vs],
+                        "year": last.year,
+                    },
+                    replace=url in known,
+                )
+                stats["stored"] += 1
+                if n % 100 == 0:
+                    await session.commit()
+            await session.commit()
+    finally:
+        await engine.dispose()
+    click.echo(
+        f"{stats['matters']} asiaa: {stats['stored']} tallennettu, "
+        f"{stats['unchanged']} ennallaan. Aja 'vaalikone ingest embed' perään."
+    )
+    return stats
