@@ -53,6 +53,21 @@ mcp = FastMCP(
 )
 
 
+async def _hybrid_search(
+    session: AsyncSession, text: str, limit: int, party: str | None = None
+) -> list[dict]:
+    """Sama hybridihaku kuin query-työkalussa: tekstiosumat ensin, sitten semanttiset
+    (bge-m3). Kokonaiset kysymykset löytyvät vain semanttisella haulla."""
+    from vaalikone.query.pipeline import retrieve
+
+    results = await retrieve(
+        session, text, party_filter=party, use_semantic=True, limit=limit,
+    )
+    for r in results:
+        r.setdefault("relevance", r.get("similarity") or 0)
+    return results
+
+
 @mcp.tool()
 async def query(
     question: str,
@@ -66,9 +81,12 @@ async def query(
     Args:
         question: Kysymys suomeksi (esim. "Mitä puolueet sanovat metsäkeskuksesta?")
         party: Rajaa yhteen puolueeseen (esim. "SDP", "KOK", "VIHR")
-        model: LLM-malli (oletus: gpt-5.4-nano)
+        model: LLM-malli (oletus: gpt-5.4-nano); "__text_only__" = pelkät hakuosumat
     """
     from vaalikone.query.pipeline import query as run_query
+
+    if model == "__text_only__":  # ei LLM:ää: palauta osumat lähteineen
+        return await search(question, party=party, limit=10)
 
     async with async_session() as session:
         result = await run_query(
@@ -102,28 +120,29 @@ async def search(
     party: str | None = None,
     limit: int = 5,
 ) -> str:
-    """Hae dokumenteista tekstihaulla (ei LLM:ää, ilmainen).
+    """Hae dokumenteista hybridihaulla: tekstihaku + semanttinen haku (ei LLM:ää, ilmainen).
+
+    Toimii sekä hakusanoilla että kokonaisilla kysymyksillä. Löytää ohjelmat,
+    ryhmäpuheenvuorot ja äänestysdokumentit (miten eduskuntaryhmät äänestivät).
 
     Args:
-        query_text: Hakusanat (esim. "verotus", "metsäkeskus")
+        query_text: Hakusanat tai kysymys (esim. "verotus", "Miten puolueet äänestivät
+            Natoon liittymisestä?")
         party: Rajaa puolueeseen (esim. "KOK")
         limit: Tulosten maksimimäärä (1-20)
     """
-    from vaalikone.query.hybrid_search import text_search
-
     async with async_session() as session:
-        results = await text_search(
-            session, query_text, limit=min(limit, 20), party_filter=party
-        )
+        results = await _hybrid_search(session, query_text, min(limit, 20), party)
 
     if not results:
         return "Ei hakutuloksia."
 
     lines = []
     for i, r in enumerate(results, 1):
-        snippet = (r.get("snippet") or "")[:300].replace("<b>", "**").replace("</b>", "**")
+        snippet = (r.get("snippet") or r.get("chunk_text") or "")[:300]
+        snippet = snippet.replace("<b>", "**").replace("</b>", "**")
         lines.append(
-            f"#{i} [{r.get('party', '?')}] {r.get('title', '')}\n"
+            f"#{i} [{r.get('party') or 'eduskunta'}] {r.get('title', '')}\n"
             f"   URL: {r.get('source_url', '-')}\n"
             f"   {snippet}"
         )
@@ -501,10 +520,8 @@ async def compare(q: str, limit_per_party: int = 3) -> str:
         q: Aihe haulle (esim. "metsäpolitiikka", "verotus")
         limit_per_party: Montako otetta per puolue (max 10)
     """
-    from vaalikone.query.hybrid_search import text_search
-
     async with async_session() as session:
-        results = await text_search(session, q, limit=min(limit_per_party, 10) * 20)
+        results = await _hybrid_search(session, q, min(limit_per_party, 10) * 20)
 
     by_party: dict[str, list[dict]] = {}
     for r in results:
@@ -520,7 +537,8 @@ async def compare(q: str, limit_per_party: int = 3) -> str:
         for item in top[:limit_per_party]:
             import re
 
-            snip = re.sub(r"<[^>]+>", "", item.get("snippet") or "")[:300].replace("\n", " ")
+            snip = re.sub(r"<[^>]+>", "", item.get("snippet") or item.get("chunk_text") or "")
+            snip = snip[:300].replace("\n", " ")
             lines.append(f"- {item.get('title')} (osuvuus {item.get('relevance', 0):.3f})")
             lines.append(f"  {snip}")
         lines.append("")
