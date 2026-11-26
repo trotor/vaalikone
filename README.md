@@ -18,14 +18,66 @@ Rakennettu kevään 2027 eduskuntavaaleja varten.
 - **Presidentinvaali 2024** — 9 ehdokasta × 2 kierrosta, koko maan äänet (valittu: Stubb)
 - **1 148 vaalirahoitusriviä eduskuntavaaleista 2023** — tukija, summa, ehdokas, puolue (vaalirahoitusvalvonta.fi)
 - **Hallitusohjelmat 2015, 2019 (Rinne), 2019 (Marin), 2023 (Orpo)** — PDF:t valtioneuvostosta (ei puoluesidonnaisia)
-- **Hybrid-haku** — PostgreSQL full-text + ILIKE + pg_trgm + semanttinen vektorihaku (pgvector)
+- **Hybrid-haku** — SQLite full-text/LIKE + semanttinen vektorihaku (sqlite-vec); PostgreSQL+pgvector valinnainen
 - **AI-chat** — kysele politiikasta luonnollisella kielellä (mikä tahansa LiteLLM-provider / lokaali Ollama), SSE-streaming
 - **Web UI** — chat tummalla/vaalealla teemalla, historia, puoluevärit, streaming
 - **MCP-serveri** — 7 työkalua Claude Codelle / Vibe: haku, vertailu, chat, ehdokkaat, tilastot
-- **Taustatyöt** — Celery + Redis (`--queue`), worker konttina docker composessa
+- **Tietokanta** — SQLite + sqlite-vec oletuksena (`./vaalikone.db`, ei Dockeria); PostgreSQL+pgvector valinnainen (`--profile pg`)
+- **Taustatyöt** — Celery + Redis (`--queue`, profiili `queue`)
 - **API-avainauth** — `VAALIKONE_API_KEY` + `X-API-Key` -header, malli-allowlist, SSRF-suoja
 - **Read-only -tila** — toimii ilman API-avainta pelkällä haulla (`__text_only__`)
 - **Offline-tuki** — toimii ilman nettiä lokaalien mallien kanssa
+
+
+## Käyttöönotto 5 minuutissa (valmis data mukana)
+
+Vaatimukset: Python 3.12+ ja git (Git LFS). Dockeria ei tarvita.
+
+```bash
+# 1. Kloonaa (LFS tuo valmiin tietokannan ~69 MB)
+git clone https://github.com/trotor/vaalikone.git
+cd vaalikone
+git lfs pull
+
+# 2. Pura valmis tietokanta (447 dokumenttia, 143 000+ äänestystä, 32 000+ ehdokasta)
+gunzip -k data/vaalikone.db.gz        # → ./vaalikone.db
+
+# 3. Asenna riippuvuudet
+python -m venv .venv && source .venv/bin/activate
+pip install -e .
+
+# 4. Käynnistä palvelin
+.venv/bin/uvicorn vaalikone.api.app:app --port 8003
+# → Web UI: http://localhost:8003
+```
+
+Ilman LLM API-avainta järjestelmä toimii **read-only -tilassa**: haku, puoluevertailu (`/api/v1/compare`), äänestys- ja ehdokashaku toimivat heti, chat palauttaa lähdeotteet ilman LLM:ää (`__text_only__`).
+
+```bash
+# CLI ilman palvelinta:
+.venv/bin/vaalikone search "metsäkeskus"
+.venv/bin/vaalikone search "verotus" --party KOK
+.venv/bin/vaalikone stats
+
+# LLM-chat päälle: lisää .env:ään oma avain, esim.
+#   LLM_API_KEY=oma-avain
+#   LLM_API_KEY_ENV=MISTRAL_API_KEY
+#   DEFAULT_LLM_MODEL=mistral/mistral-small-latest
+# tai lokaali Ollama: DEFAULT_LLM_MODEL=ollama/llama3.2:3b (ollama pull ensin)
+```
+
+**MCP-serveri Claude Codelle / Vibelle** (valmiin tietokannan kanssa):
+
+```bash
+# Vibe:
+vibe mcp add vaalikone --transport stdio \
+  --command "$(pwd)/.venv/bin/python" --arg=-m --arg=vaalikone.mcp.server
+
+# Claude Code: lisää projektin juureen .mcp.json
+# {"mcpServers": {"vaalikone": {"command": ".venv/bin/python", "args": ["-m", "vaalikone.mcp.server"]}}}
+```
+
+**Oma data alusta asti** (tyhjä kanta, hae lähteistä): ks. [Asennus](#asennus) alla — `alembic upgrade head` luo skeeman, `vaalikone ingest ...` täyttää datan.
 
 ## Missä data säilyy?
 
