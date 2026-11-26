@@ -6,6 +6,7 @@ from vaalikone.api.deps import get_db
 from vaalikone.models.party import Party
 from vaalikone.models.representative import Representative
 from vaalikone.models.vote import Vote
+from vaalikone.models.voting import Voting
 
 router = APIRouter(prefix="/api/v1/representatives", tags=["representatives"])
 
@@ -42,23 +43,27 @@ async def list_representative_votes(
     db: AsyncSession = Depends(get_db),
 ):
     """Voting history of a representative, with vote subject titles when available."""
+    from vaalikone.ingest.votes import subject_title
+
     query = (
-        select(Vote)
+        select(Vote, Voting)
+        .outerjoin(Voting, Voting.voting_id == Vote.subject)
         .where(Vote.representative_id == rep_id)
         .order_by(Vote.voted_at.desc().nullslast(), Vote.session.desc().nullslast())
         .limit(limit)
     )
-    result = await db.execute(query)
-    votes = result.scalars().all()
+    rows = (await db.execute(query)).all()
     return [
         {
             "id": str(v.id),
             "session": v.session,
             "subject": v.subject,
-            "subject_title": v.subject_title,
+            "subject_title": subject_title(voting) if voting else v.subject_title,
+            "document_ref": voting.document_ref if voting else None,
+            "stage": voting.stage if voting else None,
             "vote": v.vote.value,
             "voted_at": v.voted_at.isoformat() if v.voted_at else None,
             "document_url": v.document_url,
         }
-        for v in votes
+        for v, voting in rows
     ]

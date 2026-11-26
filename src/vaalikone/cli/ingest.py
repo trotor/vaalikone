@@ -21,7 +21,6 @@ from vaalikone.models.embedding import Embedding
 from vaalikone.models.party import Party
 from vaalikone.models.representative import Representative
 from vaalikone.models.source import Source, SourceStatus, SourceType
-from vaalikone.models.vote import Vote, VoteChoice
 from vaalikone.query.hybrid_search import escape_ilike
 
 
@@ -59,18 +58,8 @@ PARTY_MAP = {
     "kd": "KD",
     "liik": "LIIK",
     "sin": "SML",
+    "vkk": "VKK",  # Eduskuntaryhmä Valta kuuluu kansalle (2021–2023)
 }
-
-
-def _map_vote(api_vote: str) -> VoteChoice:
-    mapping = {
-        "Jaa": VoteChoice.JAA,
-        "Ei": VoteChoice.EI,
-        "Tyhjaa": VoteChoice.TYHJA,
-        "Tyhjää": VoteChoice.TYHJA,
-        "Poissa": VoteChoice.POISSA,
-    }
-    return mapping.get((api_vote or "").strip(), VoteChoice.POISSA)
 
 
 async def _get_session():
@@ -248,124 +237,6 @@ async def _ingest_representatives() -> dict:
 
     await engine.dispose()
     return {"added": added, "skipped": skipped}
-
-
-async def _fetch_vote_subject_map(
-    client: EduskuntaClient, max_pages: int | None = None
-) -> dict[str, str]:
-    """Map AanestysId -> AanestysOtsikko (vote subject title)."""
-    summaries = await client.fetch_vote_summaries(max_pages=max_pages)
-    return {
-        str(s.get("AanestysId", "")): (s.get("AanestysOtsikko") or "").strip()
-        for s in summaries
-        if s.get("AanestysId")
-    }
-
-
-async def _ingest_votes(max_pages: int | None = None) -> dict:
-    client = EduskuntaClient()
-    click.echo("Fetching votes from eduskunta API...")
-    votes = await client.fetch_votes(max_pages=max_pages)
-    click.echo(f"Fetched {len(votes)} vote records from API.")
-    click.echo("Fetching vote subjects...")
-    subjects = await _fetch_vote_subject_map(client, max_pages=max_pages)
-
-    engine, async_session = await _get_session()
-
-    async with async_session() as session:
-        source = Source(
-            source_type=SourceType.API,
-            url=f"{client.base_url}/api/v1/tables/SaliDBAanestysEdustaja/rows",
-            title="Eduskunta - Äänestykset",
-            status=SourceStatus.INDEXED,
-        )
-        session.add(source)
-
-        added = 0
-        skipped = 0
-        with session.no_autoflush:
-            # Cache henkilonumero/name -> representative to avoid a query per vote row
-            rep_cache: dict[str, Representative | None] = {}
-            for vote_data in votes:
-                person_id = str(vote_data.get("EdustajaHenkiloNumero", "") or "")
-                first_name = vote_data.get("EdustajaEtunimi", "")
-                last_name = vote_data.get("EdustajaSukunimi", "")
-                key = person_id or f"{first_name}|{last_name}"
-                if key not in rep_cache:
-                    if person_id:
-                        result = await session.execute(
-                            select(Representative)
-                            .where(Representative.person_id == person_id)
-                            .limit(1)
-                        )
-                    else:
-                        result = await session.execute(
-                            select(Representative)
-                            .where(
-                                Representative.first_name == first_name,
-                                Representative.last_name == last_name,
-                            )
-                            .limit(1)
-                        )
-                    rep_cache[key] = result.scalar_one_or_none()
-                rep = rep_cache[key]
-                if not rep:
-                    skipped += 1
-                    continue
-
-                aanestys_id = str(vote_data.get("AanestysId", "") or "")
-                if not aanestys_id:
-                    skipped += 1
-                    continue
-
-                if await _insert_ignore(
-                    session, Vote,
-                    {
-                        "representative_id": rep.id,
-                        "session": str(vote_data.get("IstuntoVPVuosi", "") or "") or None,
-                        "subject": aanestys_id,
-                        "subject_title": subjects.get(aanestys_id),
-                        "vote": _map_vote(vote_data.get("EdustajaAanestys", "Poissa")),
-                    },
-                    ["representative_id", "subject"],
-                    index_where=Vote.subject.isnot(None),
-                ):
-                    added += 1
-                else:
-                    skipped += 1
-
-        await session.commit()
-        click.echo(f"Added {added} votes, skipped {skipped}.")
-
-    await engine.dispose()
-    return {"added": added, "skipped": skipped}
-
-
-async def _ingest_vote_subjects(max_pages: int | None = None) -> dict:
-    """Backfill votes.subject_title from SaliDBAanestys for existing votes."""
-    client = EduskuntaClient()
-    click.echo("Fetching vote subjects...")
-    subjects = await _fetch_vote_subject_map(client, max_pages=max_pages)
-    click.echo(f"Got {len(subjects)} vote subjects.")
-
-    engine, async_session = await _get_session()
-    async with async_session() as session:
-        from sqlalchemy import update
-
-        updated = 0
-        for aanestys_id, title in subjects.items():
-            if not title:
-                continue
-            result = await session.execute(
-                update(Vote)
-                .where(Vote.subject == aanestys_id, Vote.subject_title.is_(None))
-                .values(subject_title=title)
-            )
-            updated += result.rowcount or 0
-        await session.commit()
-        click.echo(f"Updated subject_title on {updated} votes.")
-    await engine.dispose()
-    return {"updated": updated}
 
 
 def _strip_html(html: str) -> str:
@@ -979,26 +850,26 @@ def representatives(queue: bool):
 
 
 @ingest.command()
-@click.option("--max-pages", default=None, type=int, help="Limit number of API pages to fetch.")
+@click.option("--since", default=2019, show_default=True, type=int,
+              help="Äänestykset tästä valtiopäivävuodesta alkaen.")
+@click.option("--until", default=None, type=int, help="Viimeinen vuosi (oletus: kuluva).")
+@click.option("--member-votes-since", default=2023, show_default=True, type=int,
+              help="Edustajakohtaiset äänet tästä vuodesta (~200 riviä/äänestys).")
+@click.option("--refresh", is_flag=True, help="Korvaa jo tallennetut äänestykset.")
+@click.option("--drop-legacy", is_flag=True,
+              help="Poista vanhan avoindata-rajapinnan äänestysrivit (numeeriset tunnisteet).")
 @click.option("--queue", "queue", is_flag=True, help="Run as background Celery task")
-def votes(max_pages: int | None, queue: bool):
-    """Fetch and store votes from eduskunta API (with subject titles)."""
+def votes(since: int, until: int | None, member_votes_since: int, refresh: bool,
+          drop_legacy: bool, queue: bool):
+    """Täysistuntojen äänestykset api.eduskunta.fi:stä (ryhmäjakaumat + edustajien äänet)."""
+    kwargs = dict(since=since, until=until, member_votes_since=member_votes_since,
+                  refresh=refresh, drop_legacy=drop_legacy)
     if queue:
-        _enqueue("ingest_votes_task", max_pages=max_pages)
+        _enqueue("ingest_votes_task", **kwargs)
         return
-    asyncio.run(_ingest_votes(max_pages))
+    from vaalikone.ingest.votes import ingest_votes
 
-
-@ingest.command(name="vote-subjects")
-@click.option("--max-pages", default=None, type=int, help="Limit number of API pages to fetch.")
-@click.option("--queue", "queue", is_flag=True, help="Run as background Celery task")
-def vote_subjects(max_pages: int | None, queue: bool):
-    """Backfill vote subject titles (äänestysten otsikot) for existing votes."""
-    if queue:
-        _enqueue("ingest_vote_subjects_task", max_pages=max_pages)
-        return
-    asyncio.run(_ingest_vote_subjects(max_pages))
-
+    asyncio.run(ingest_votes(**kwargs))
 
 @ingest.command()
 @click.argument("query")

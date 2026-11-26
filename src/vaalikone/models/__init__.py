@@ -9,6 +9,7 @@ from vaalikone.models.query_log import QueryLog
 from vaalikone.models.representative import Representative
 from vaalikone.models.source import Source, SourceStatus, SourceType
 from vaalikone.models.vote import Vote, VoteChoice
+from vaalikone.models.voting import Voting
 
 __all__ = [
     "Base",
@@ -22,6 +23,7 @@ __all__ = [
     "Embedding",
     "Vote",
     "VoteChoice",
+    "Voting",
     "QueryLog",
     "Election",
     "ElectionType",

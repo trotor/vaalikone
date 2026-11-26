@@ -34,6 +34,7 @@ from vaalikone.models.party import Party
 from vaalikone.models.representative import Representative
 from vaalikone.models.source import Source
 from vaalikone.models.vote import Vote
+from vaalikone.models.voting import Voting
 
 settings = get_settings()
 ensure_llm_env()
@@ -318,53 +319,105 @@ async def search_votes(
     subject_contains: str | None = None,
     limit: int = 20,
 ) -> str:
-    """Hae kansanedustajien äänestyksiä (sis. äänestyksen otsikon subject_title).
+    """Hae kansanedustajien äänestyksiä (edustajakohtaiset äänet, vaalikausi 2023→).
 
     Args:
         representative: Kansanedustajan nimi (esim. "Marin")
-        subject_contains: Hae äänestyksen otsikosta (esim. "Nato")
+        subject_contains: Hae äänestyksen asiasta, otsikosta tai asiakirjasta (esim. "Nato",
+            "HE 109/2024")
         limit: Montako tulosta (max 100)
     """
+    from vaalikone.ingest.votes import subject_title
+    from vaalikone.query.hybrid_search import escape_ilike
+
     async with async_session() as session:
         stmt = (
-            select(
-                Representative.first_name,
-                Representative.last_name,
-                Party.abbreviation,
-                Vote.session,
-                Vote.subject_title,
-                Vote.vote,
-            )
+            select(Representative.first_name, Representative.last_name,
+                   Party.abbreviation, Vote, Voting)
             .join(Representative, Vote.representative_id == Representative.id)
             .outerjoin(Party, Representative.party_id == Party.id)
+            .outerjoin(Voting, Voting.voting_id == Vote.subject)
         )
         if representative:
             stmt = stmt.where(
                 (Representative.first_name + " " + Representative.last_name).ilike(
-                    f"%{representative}%"
+                    f"%{escape_ilike(representative)}%", escape="\\"
                 )
             )
         if subject_contains:
-            from vaalikone.query.hybrid_search import escape_ilike
-
+            pattern = f"%{escape_ilike(subject_contains)}%"
             stmt = stmt.where(
-                Vote.subject_title.ilike(f"%{escape_ilike(subject_contains)}%", escape="\\")
+                Voting.item_title.ilike(pattern, escape="\\")
+                | Voting.title.ilike(pattern, escape="\\")
+                | Voting.document_ref.ilike(pattern, escape="\\")
+                | Vote.subject_title.ilike(pattern, escape="\\")
             )
-        stmt = stmt.order_by(Vote.session.desc().nullslast()).limit(min(limit, 100))
-        result = await session.execute(stmt)
-        rows = result.all()
+        stmt = stmt.order_by(Vote.voted_at.desc().nullslast()).limit(min(limit, 100))
+        rows = (await session.execute(stmt)).all()
 
     if not rows:
         return "Ei äänestyksiä hakuehdoilla."
-    lines = [f"{'Kansanedustaja':<25} {'Puolue':<7} {'Istunto':<8} {'Äänestys':<8} Otsikko"]
+    lines = [f"{'Kansanedustaja':<25} {'Puolue':<7} {'Pvm':<10} {'Ääni':<7} Asia"]
     lines.append("-" * 100)
-    for fn, ln, party, sess, title, vote in rows:
+    for fn, ln, party, vote, voting in rows:
         name = f"{fn} {ln}"[:24]
+        day = vote.voted_at.strftime("%Y-%m-%d") if vote.voted_at else (vote.session or "")
+        title = subject_title(voting) if voting else (vote.subject_title or "")
         lines.append(
-            f"{name:<25} {(party or '?'):<7} {(sess or ''):<8} "
-            f"{vote.value:<8} {(title or '')[:60]}"
+            f"{name:<25} {(party or '?'):<7} {day:<10} {vote.vote.value:<7} {title[:90]}"
         )
     return "\n".join(lines)
+
+
+@mcp.tool()
+async def party_votes(subject_contains: str, limit: int = 10) -> str:
+    """Miten eduskuntaryhmät äänestivät: täysistuntoäänestysten ryhmäjakaumat (2019→).
+
+    Args:
+        subject_contains: Hae asian otsikosta, äänestyksen otsikosta tai asiakirjasta
+            (esim. "Nato", "työttömyysturva", "HE 109/2024")
+        limit: Montako äänestystä (max 50)
+    """
+    from vaalikone.ingest.votes import subject_title
+    from vaalikone.query.hybrid_search import escape_ilike
+
+    pattern = f"%{escape_ilike(subject_contains)}%"
+    async with async_session() as session:
+        stmt = (
+            select(Voting)
+            .where(
+                Voting.item_title.ilike(pattern, escape="\\")
+                | Voting.title.ilike(pattern, escape="\\")
+                | Voting.document_ref.ilike(pattern, escape="\\")
+            )
+            .where(Voting.cancelled.is_(False))
+            .order_by(Voting.voted_at.desc().nullslast())
+            .limit(min(limit, 50))
+        )
+        votings = (await session.execute(stmt)).scalars().all()
+
+    if not votings:
+        return "Ei äänestyksiä hakuehdoilla."
+    out = []
+    for v in votings:
+        r = v.result or {}
+        day = v.voted_at.strftime("%Y-%m-%d") if v.voted_at else ""
+        out.append(f"## {day} {subject_title(v)}")
+        out.append(
+            f"Tulos: jaa {r.get('jaa')}, ei {r.get('ei')}, tyhjä {r.get('tyhja')}, "
+            f"poissa {r.get('poissa')} ({v.stage or ''})"
+        )
+        groups = sorted((v.group_results or {}).items(), key=lambda kv: -sum(
+            kv[1].get(k, 0) for k in ("jaa", "ei", "tyhja", "poissa")
+        ))
+        for code, g in groups:
+            label = g.get("party") or code
+            out.append(
+                f"  {label:<6} jaa {g.get('jaa', 0):>3}  ei {g.get('ei', 0):>3}  "
+                f"tyhjä {g.get('tyhja', 0):>2}  poissa {g.get('poissa', 0):>3}"
+            )
+        out.append("")
+    return "\n".join(out)
 
 
 @mcp.tool()

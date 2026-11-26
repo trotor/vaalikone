@@ -56,21 +56,17 @@ def ingest_representatives_task(self):
 
 
 @app.task(bind=True, max_retries=2)
-def ingest_votes_task(self, max_pages: int | None = None):
-    from vaalikone.cli.ingest import _ingest_votes
+def ingest_votes_task(
+    self, since: int = 2019, until: int | None = None, member_votes_since: int = 2023,
+    refresh: bool = False, drop_legacy: bool = False,
+):
+    from vaalikone.ingest.votes import ingest_votes
 
     try:
-        return asyncio.run(_ingest_votes(max_pages))
-    except Exception as e:
-        raise self.retry(exc=e, countdown=60)
-
-
-@app.task(bind=True, max_retries=2)
-def ingest_vote_subjects_task(self, max_pages: int | None = None):
-    from vaalikone.cli.ingest import _ingest_vote_subjects
-
-    try:
-        return asyncio.run(_ingest_vote_subjects(max_pages))
+        return asyncio.run(ingest_votes(
+            since=since, until=until, member_votes_since=member_votes_since,
+            refresh=refresh, drop_legacy=drop_legacy,
+        ))
     except Exception as e:
         raise self.retry(exc=e, countdown=60)
 

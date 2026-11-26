@@ -12,6 +12,7 @@ from vaalikone.models.party import Party
 from vaalikone.models.representative import Representative
 from vaalikone.models.source import Source
 from vaalikone.models.vote import Vote
+from vaalikone.models.voting import Voting
 
 router = APIRouter(prefix="/api/v1/stats", tags=["stats"])
 
@@ -25,6 +26,7 @@ async def get_stats(db: AsyncSession = Depends(get_db)):
         ("sources", Source),
         ("documents", Document),
         ("embeddings", Embedding),
+        ("votings", Voting),
         ("votes", Vote),
         ("elections", Election),
         ("candidates", Candidate),

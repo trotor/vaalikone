@@ -13,12 +13,11 @@
 
 ### Uusi data
 - [x] Kaikkien 16 puolueen vaaliohjelmat/puolueohjelmat + varjobudjetit 2026 (`config/sources.yaml`, `vaalikone ingest programs`)
-- [x] Äänestysotsikot (`ingest vote-subjects`, `votes.subject_title`)
 - [x] Täysistuntopuheenvuorot (`ingest speeches`, uusi `api.eduskunta.fi`)
 - [x] Kirjalliset kysymykset KK (`ingest questions`, 41 900+ kpl)
 - [x] Ehdokasdata eduskuntavaalit 2023 (Tilastokeskus PxWeb `evaa/13t3.px`, 2 424 ehdokasta)
 - [x] API: `/elections`, `/elections/{id}/candidates`, `/elections/{id}/stats`, `/representatives/{id}/votes`
-- [x] MCP-työkalut: `search_votes`, `list_candidates`
+- [x] MCP-työkalut: `search_votes`, `party_votes`, `list_candidates`
 
 ### Tekninen kehitys
 - [x] Celery-työntekijä (`workers/tasks.py`) + `--queue` CLI-komennoissa, worker docker composessa
@@ -51,7 +50,9 @@
 - [x] Ryhmäpuheenvuorot 2019→ (`ingest group-speeches`, 1 421 kpl) (2026-11-26)
 - [x] Vaalirahoitus korjattu (CSV:n heittomerkkilainaus + UTF-8: kaikki vanhat rivit olivat tyhjiä) ja laajennettu EU 2024, PV 2024, KV 2025 (2026-11-26)
 - [x] Vaihtoehtobudjetit 2027 (SDP, VIHR, VAS, LIIK) ja 2026-ohjelmat sivukarttojen löytöajolla (2026-11-26)
-- [ ] Äänestykset uudesta api.eduskunta.fi:stä (15 659 äänestystä, edustajittaiset äänet + eduskuntaryhmäjakaumat; vanha avoindata-taulu tyhjenee: 166 äänestystä jäljellä)
+- [x] Äänestykset uudesta api.eduskunta.fi:stä: `votings` 2019→ ryhmäjakaumineen, edustajakohtaiset äänet 2023→; vanhan avoindata-taulun rikkinäiset rivit (99,97 % "poissa", ei päivämääriä) korvattu (2026-11-26)
+- [ ] Edustajakohtaiset äänet myös 2019–2022 (`ingest votes --member-votes-since 2019`, ~730 000 riviä lisää) — tarvitaanko?
+- [ ] Äänestykset RAG-korpukseen (dokumentti per asia ryhmäjakaumineen), jotta chat löytää ne ilman MCP:tä
 - [ ] Kirjalliset kysymykset nykyiseltä vaalikaudelta (hakuehto `valtiopaiva` ei suodata valtiopaivaasia-kategoriassa — selvitä oikea kenttä)
 - [ ] Eduskuntavaaliohjelmat 2027 — puolueet julkaisevat talvella 2026–27; lisää `config/sources.yaml`:iin ja aja `ingest pohtiva --since 2026` kun FSD on arkistoinut
 - [ ] Puolueiden säännöt rekisteristä (`publicapi/attachment/{id}/2/rules.pdf`) — tarvitaanko?

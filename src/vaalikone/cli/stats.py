@@ -13,6 +13,7 @@ from vaalikone.models.party import Party
 from vaalikone.models.representative import Representative
 from vaalikone.models.source import Source
 from vaalikone.models.vote import Vote
+from vaalikone.models.voting import Voting
 
 
 async def _show_stats():
@@ -29,7 +30,8 @@ async def _show_stats():
             ("Lähteet", Source),
             ("Dokumentit", Document),
             ("Embeddings", Embedding),
-            ("Äänestykset", Vote),
+            ("Täysistuntoäänestykset", Voting),
+            ("Edustajien äänet", Vote),
         ]:
             result = await session.execute(select(func.count()).select_from(model))
             count = result.scalar()

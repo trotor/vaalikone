@@ -1,0 +1,234 @@
+{
+ "searchMetadata": {
+  "totalResultCount": 1
+ },
+ "results": [
+  {
+   "id": "2025-130-4",
+   "type": "Aanestys",
+   "aanestys": {
+    "id": "2025-130-4",
+    "istunnonTunniste": "2025-130",
+    "paivajarjestyksenotsikko": {
+     "fi": "Tiistai 16.12.2025 klo 10.00",
+     "sv": "Tisdag 16.12.2025 kl. 10.00"
+    },
+    "aanestysotsikko": {
+     "fi": "Lakiehdotuksen hyväksyminen JAA /hylkääminen EI",
+     "sv": "Lagförslaget godkänns JA / förkastas NEJ"
+    },
+    "ilmoitettualkuaika": "2025-12-16T10:00:00.000+02:00",
+    "istuntovpvuosi": "2025",
+    "istuntonumero": "130",
+    "istuntopvm": "2025-12-16+02:00",
+    "istuntoalkuaika": "2025-12-16T09:59:55.977+02:00",
+    "aanestysnumero": "4",
+    "aanestysalkuaika": "2025-12-16T10:04:53.992+02:00",
+    "aanestysloppuaika": "2025-12-16T10:04:53.992+02:00",
+    "aanestysmitatoity": false,
+    "kohta": {
+     "kasittelyotsikkonimi": {
+      "fi": "Toinen käsittely",
+      "sv": "Andra behandlingen"
+     },
+     "kasittelyvaihenimi": {
+      "fi": "Osittain toinen, osittain ainoa käsittely",
+      "sv": "Dels andra, dels enda behandling"
+     },
+     "jarjestys": "4",
+     "tunniste": "3",
+     "nakyykokohtatunniste": true,
+     "otsikko": {
+      "fi": "Hallituksen esitys eduskunnalle laiksi sähkön ja eräiden polttoaineiden valmisteverosta annetun lain eräiden säännösten kumoamisesta",
+      "sv": "Regeringens proposition till riksdagen med förslag till lag om upphävande av vissa bestämmelser i lagen om punktskatt på elström och vissa bränslen"
+     },
+     "asiakirjat": {
+      "paaasiakirjaEduskuntatunnus": {
+       "fi": "HE 156/2025 vp",
+       "sv": "RP 156/2025 rd"
+      },
+      "paaasiakirjaAsiatyyppi": "HE",
+      "paaasiakirjaTehtavaluokka": null,
+      "eduskuntatunnukset": []
+     }
+    },
+    "puhemies": {
+     "henkilonumero": "1109",
+     "sukunimi": "Halla-aho",
+     "etunimi": "Jussi",
+     "alkuotsikko": {
+      "fi": "Puhemiehenä toimi",
+      "sv": null
+     },
+     "loppuotsikko": {
+      "fi": ". Puhemies ei osallistu äänestykseen.",
+      "sv": "var talman. Talmannen deltar inte i omröstningar."
+     },
+     "titteli": {
+      "fi": "puhemies",
+      "sv": "Talman"
+     }
+    },
+    "aanestystapahtumat": [
+     {
+      "vaalipiiri": {
+       "fi": "Varsinais-Suomen vaalipiiri",
+       "sv": "Egentliga Finlands valkrets"
+      },
+      "eduskuntaryhma": {
+       "fi": "Kansallisen kokoomuksen eduskuntaryhmä",
+       "sv": "Samlingspartiets riksdagsgrupp"
+      },
+      "sukupuoli": {
+       "fi": "Mies",
+       "sv": "Man"
+      },
+      "kayttaytyminen": {
+       "fi": "Jaa",
+       "sv": "Ja"
+      },
+      "henkilonumero": "1504",
+      "sukunimi": "Aalto-Setälä",
+      "etunimi": "Pauli",
+      "edkryhmalyhenne": {
+       "fi": "kok",
+       "sv": "saml"
+      }
+     },
+     {
+      "vaalipiiri": {
+       "fi": "Pirkanmaan vaalipiiri",
+       "sv": "Birkalands valkrets"
+      },
+      "eduskuntaryhma": {
+       "fi": "Sosialidemokraattinen eduskuntaryhmä",
+       "sv": "Socialdemokratiska riksdagsgruppen"
+      },
+      "sukupuoli": {
+       "fi": "Mies",
+       "sv": "Man"
+      },
+      "kayttaytyminen": {
+       "fi": "Ei",
+       "sv": "Nej"
+      },
+      "henkilonumero": "970",
+      "sukunimi": "Asell",
+      "etunimi": "Marko",
+      "edkryhmalyhenne": {
+       "fi": "sd",
+       "sv": "sd"
+      }
+     },
+     {
+      "vaalipiiri": {
+       "fi": "Oulun vaalipiiri",
+       "sv": "Uleåborgs valkrets"
+      },
+      "eduskuntaryhma": {
+       "fi": "Perussuomalaisten eduskuntaryhmä",
+       "sv": "Sannfinländarnas riksdagsgrupp"
+      },
+      "sukupuoli": {
+       "fi": "Mies",
+       "sv": "Man"
+      },
+      "kayttaytyminen": {
+       "fi": "Jaa",
+       "sv": "Ja"
+      },
+      "henkilonumero": "1452",
+      "sukunimi": "Aittakumpu",
+      "etunimi": "Pekka",
+      "edkryhmalyhenne": {
+       "fi": "ps",
+       "sv": "saf"
+      }
+     },
+     {
+      "vaalipiiri": {
+       "fi": "Oulun vaalipiiri",
+       "sv": "Uleåborgs valkrets"
+      },
+      "eduskuntaryhma": {
+       "fi": "Eduskuntaryhmään kuulumaton",
+       "sv": "Grupplös"
+      },
+      "sukupuoli": {
+       "fi": "Mies",
+       "sv": "Man"
+      },
+      "kayttaytyminen": {
+       "fi": "Jaa",
+       "sv": "Ja"
+      },
+      "henkilonumero": "1536",
+      "sukunimi": "Polvinen",
+      "etunimi": "Mikko",
+      "edkryhmalyhenne": {
+       "fi": "erk",
+       "sv": "gl"
+      }
+     }
+    ],
+    "aanestystulos": {
+     "jaa": 3,
+     "ei": 1,
+     "tyhjia": 0,
+     "poissa": 0,
+     "yhteensa": 4
+    },
+    "hallitusoppositioJakaumat": [
+     {
+      "nimi": {
+       "fi": "Hallitusryhmät",
+       "sv": "Regeringsgrupperna"
+      },
+      "jaa": 89,
+      "ei": 0,
+      "tyhjia": 0,
+      "poissa": 18,
+      "yhteensa": 107
+     },
+     {
+      "nimi": {
+       "fi": "Oppositioryhmät",
+       "sv": "Oppositionsgrupperna"
+      },
+      "jaa": 42,
+      "ei": 38,
+      "tyhjia": 0,
+      "poissa": 12,
+      "yhteensa": 92
+     }
+    ],
+    "eduskuntaryhmaJakaumat": [
+     {
+      "nimi": {
+       "fi": "Kansallisen kokoomuksen eduskuntaryhmä",
+       "sv": "Samlingspartiets riksdagsgrupp"
+      },
+      "jaa": 36,
+      "ei": 0,
+      "tyhjia": 0,
+      "poissa": 12,
+      "yhteensa": 48
+     }
+    ],
+    "vaalipiiriJakaumat": [
+     {
+      "nimi": {
+       "fi": "Helsingin vaalipiiri",
+       "sv": "Helsingfors valkrets"
+      },
+      "jaa": 14,
+      "ei": 4,
+      "tyhjia": 0,
+      "poissa": 4,
+      "yhteensa": 22
+     }
+    ]
+   }
+  }
+ ]
+}

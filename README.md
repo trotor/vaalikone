@@ -15,7 +15,7 @@ Rakennettu kevään 2027 eduskuntavaaleja varten.
 - **Täysistuntopuheenvuorot** — haettavissa uudesta `api.eduskunta.fi` -hausta (`vaalikone ingest speeches`)
 - **Kirjalliset kysymykset (KK)** — 41 900+ kysymystä (`vaalikone ingest questions`)
 - **2 677 kansanedustajaa** — eduskunnan avoin data vuodesta 1907
-- **143 000+ äänestystä äänestysotsikoilla** — `vaalikone ingest vote-subjects`
+- **6 521 täysistuntoäänestystä 2019→** eduskuntaryhmien jakaumineen (ryhmä äänestyshetkellä) ja **570 700 edustajakohtaista ääntä** vaalikaudelta 2023→ (`vaalikone ingest votes`, api.eduskunta.fi)
 - **2 424 ehdokasta eduskuntavaaleista 2023** — äänimäärät, valintatieto, vaalipiiri (Tilastokeskus)
 - **29 950 ehdokasta kuntavaaleista 2025** — kaikki 12 vaalipiiriä, äänimäärät ja valintatieto (`vaalikone ingest candidates --election kuntavaalit --year 2025`)
 - **232 ehdokasta europarlamenttivaaleista 2024** — äänimäärät, vertausluku, valintatieto (15 valittua)
@@ -25,7 +25,7 @@ Rakennettu kevään 2027 eduskuntavaaleja varten.
 - **Hybrid-haku** — SQLite full-text/LIKE + semanttinen vektorihaku (sqlite-vec); PostgreSQL+pgvector valinnainen
 - **AI-chat** — kysele politiikasta luonnollisella kielellä (mikä tahansa LiteLLM-provider / lokaali Ollama), SSE-streaming
 - **Web UI** — chat tummalla/vaalealla teemalla, historia, puoluevärit, streaming
-- **MCP-serveri** — 7 työkalua Claude Codelle / Vibe: haku, vertailu, chat, ehdokkaat, tilastot
+- **MCP-serveri** — 11 työkalua Claude Codelle / Vibe: haku, vertailu, chat, äänestykset, ehdokkaat, tilastot
 - **Tietokanta** — SQLite + sqlite-vec oletuksena (`./vaalikone.db`, ei Dockeria); PostgreSQL+pgvector valinnainen (`--profile pg`)
 - **Taustatyöt** — Celery + Redis (`--queue`, profiili `queue`)
 - **API-avainauth** — `VAALIKONE_API_KEY` + `X-API-Key` -header, malli-allowlist, SSRF-suoja
@@ -38,12 +38,12 @@ Rakennettu kevään 2027 eduskuntavaaleja varten.
 Vaatimukset: Python 3.12+ ja git (Git LFS). Dockeria ei tarvita.
 
 ```bash
-# 1. Kloonaa (LFS tuo valmiin tietokannan ~94 MB)
+# 1. Kloonaa (LFS tuo valmiin tietokannan ~121 MB)
 git clone https://github.com/trotor/vaalikone.git
 cd vaalikone
 git lfs pull
 
-# 2. Pura valmis tietokanta (2 046 dokumenttia, 22 puoluetta, 143 000+ äänestystä, 32 000+ ehdokasta, 3 249 vaalirahoitusriviä)
+# 2. Pura valmis tietokanta (2 046 dokumenttia, 22 puoluetta, 6 521 äänestystä + 570 700 edustajan ääntä, 32 000+ ehdokasta, 3 249 vaalirahoitusriviä)
 gunzip -k data/vaalikone.db.gz        # → ./vaalikone.db
 
 # 3. Asenna riippuvuudet
@@ -91,9 +91,9 @@ vibe mcp add vaalikone --transport stdio \
 
 - Tietokanta: `sqlite+aiosqlite:///./vaalikone.db` (projektin juuressa, git-ignoroitu)
 - Vektorihaku: `sqlite-vec`-laajennus (ladataan automaattisesti yhteydessä)
-- Taulut: `parties`, `representatives`, `votes` (äänestyskäyttäytyminen), `documents`, `embeddings` (float32-BLOB), `sources`, `elections`, `candidates`, `campaign_finances` (vaalirahoitus), `query_log`
+- Taulut: `parties`, `representatives`, `votings` (täysistuntoäänestykset + eduskuntaryhmien jakaumat), `votes` (edustajakohtaiset äänet, `subject` = `votings.voting_id`), `documents`, `embeddings` (float32-BLOB), `sources`, `elections`, `candidates`, `campaign_finances` (vaalirahoitus), `query_log`
 - Valinnainen PostgreSQL+pgvector: `docker compose --profile pg up -d postgres` + `DATABASE_URL=postgresql+...` (ks. `.env.example`); datan siirto: `scripts/migrate_pg_to_sqlite.py`
-- Valmis data jaettavaksi: `data/vaalikone.db.gz` (Git LFS, ~94 MB)
+- Valmis data jaettavaksi: `data/vaalikone.db.gz` (Git LFS, ~121 MB)
 - GitHub-repo ei ole julkinen — dataa ei ole pushattu mihinkään
 
 **Mitä lähtee ulos koneelta?**
@@ -188,7 +188,7 @@ alembic upgrade head
 
 ### 4. Lataa valmis tietokanta (valinnainen)
 
-Jos haluat aloittaa valmiilla datalla (2 046 dokumenttia, 22 puoluetta, 143 000+ äänestystä, 32 000+ ehdokasta, 3 249 vaalirahoitusriviä):
+Jos haluat aloittaa valmiilla datalla (2 046 dokumenttia, 22 puoluetta, 6 521 äänestystä + 570 700 edustajan ääntä, 32 000+ ehdokasta, 3 249 vaalirahoitusriviä):
 
 ```bash
 git lfs pull
@@ -207,9 +207,10 @@ vaalikone ingest party-register
 # Kansanedustajat eduskunnan avoimesta datasta
 vaalikone ingest representatives
 
-# Äänestyksiä (50 sivua ~ 5 000 ääntä, nopea) — otsikot tulevat mukaan
-vaalikone ingest votes --max-pages 50
-vaalikone ingest vote-subjects --max-pages 50   # Täyttää äänestysten otsikot jälkikäteen
+# Täysistuntojen äänestykset (api.eduskunta.fi): äänestykset + ryhmäjakaumat 2019→,
+# edustajakohtaiset äänet 2023→ (~200 riviä/äänestys). Idempotentti, ajettavissa uudelleen.
+vaalikone ingest votes
+vaalikone ingest votes --since 2026 --member-votes-since 2026   # vain tuoreet
 
 # Täysistuntopuheenvuorot ja kirjalliset kysymykset (uusi api.eduskunta.fi)
 vaalikone ingest speeches ilmastonmuutos --max-results 100
@@ -307,8 +308,7 @@ Käynnistä palvelin ja avaa http://localhost:8003. Chat-käyttöliittymä tunni
 # Datan syöttö
 vaalikone seed parties                          # Syötä puolueet
 vaalikone ingest representatives                # Hae kansanedustajat
-vaalikone ingest votes --max-pages 100          # Hae äänestyksiä (otsikoilla)
-vaalikone ingest vote-subjects                  # Äänestysotsikot jälkikäteen
+vaalikone ingest votes                          # Äänestykset 2019→ + edustajien äänet 2023→
 vaalikone ingest speeches ilmastonmuutos        # Täysistuntopuheenvuorot
 vaalikone ingest group-speeches                 # Ryhmäpuheenvuorot 2019→
 vaalikone ingest questions --max-results 100   # Kirjalliset kysymykset
@@ -381,7 +381,7 @@ vibe mcp add vaalikone --transport stdio \
 }
 ```
 
-Työkalut: `search_documents`, `compare_parties`, `ask_politics` (LLM-chat), `get_party_info`, `get_election_candidates`, `get_stats`, `ingest_url` (estetty read-only -tilassa).
+Työkalut: `query` (LLM-chat), `search`, `compare`, `list_parties`, `get_party`, `list_documents`, `party_votes` (eduskuntaryhmien äänet asiasta), `search_votes` (edustajien äänet), `list_candidates`, `stats`, `ingest_url` (estetty read-only -tilassa).
 
 ### Tietoturva
 
@@ -472,6 +472,7 @@ PIR (Piraattipuolue), FP (Feministinen puolue)
 | Puolueiden omat sivut | `ingest programs` | Vaaliohjelmat, varjobudjetit, uusimmat puolueohjelmat (esim. Vihreiden puolueohjelma 2027–2031, Vapauden liiton eduskuntavaaliohjelma 2027) — `config/sources.yaml` |
 | Puoluerekisteri | `ingest party-register` | Viralliset yleisohjelmat niiltä 10 puolueelta 20:stä, joilla liite on rekisterissä (AP, KRI, VKK, VAPL, TP, LIB, EOP, HAMP, SML, SGP). |
 | Eduskunta (api.eduskunta.fi) | `ingest group-speeches` | 1 421 ryhmäpuheenvuoroa 2019→ — eduskuntaryhmän virallinen kanta jokaiseen isoon keskusteluun |
+| Eduskunta (api.eduskunta.fi) | `ingest votes` | 6 521 täysistuntoäänestystä 2019→ ryhmäjakaumineen + 570 700 edustajan ääntä 2023→ — miten puolueet oikeasti äänestivät (MCP: `party_votes`, `search_votes`) |
 | FSD Pohtiva | `ingest pohtiva` | ~190 suomenkielistä ohjelmaa 2019→: eurovaaliohjelmat 2024, kunta- ja aluevaaliohjelmat 2025, periaate- ja erityisohjelmat. Jo kannassa olevat (3-sanajonojen kattavuus ≥ 50 %) ohitetaan, ja tyypittömälle kopiolle annetaan Pohtivan tyyppi ja vuosi. |
 
 Järjestys tuoreeseen kantaan: `seed parties` → `party-register` → `programs` → `pohtiva` → `embed`.

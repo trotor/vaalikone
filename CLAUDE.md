@@ -29,7 +29,7 @@ docker exec -i $(docker ps -qf "name=postgres") psql -U vaalikone < data/vaaliko
 # 6. OR seed fresh data
 vaalikone seed parties
 vaalikone ingest representatives
-vaalikone ingest votes --max-pages 50
+vaalikone ingest votes
 vaalikone ingest embed --model ollama/bge-m3
 
 # 7. Install Ollama models (macOS)
@@ -65,8 +65,7 @@ vaalikone ingest pdf <URL> --party PS
 vaalikone ingest crawl <URL> --party VIHR --depth 2 --max-pages 50
 vaalikone ingest embed --model ollama/bge-m3
 vaalikone ingest representatives            # kansanedustajat (dedup person_id:llä)
-vaalikone ingest votes --max-pages 100      # äänestykset otsikoilla
-vaalikone ingest vote-subjects              # äänestysotsikot olemassaoleville
+vaalikone ingest votes                     # äänestykset 2019→ (votings + ryhmäjakaumat), edustajien äänet 2023→ (api.eduskunta.fi)
 vaalikone ingest speeches ilmastonmuutos --max-results 100   # täysistuntopuheet (api.eduskunta.fi)
 vaalikone ingest questions --max-results 100                 # kirjalliset kysymykset (KK)
 vaalikone ingest candidates --year 2023    # ehdokkaat Tilastokeskuksesta
@@ -122,6 +121,7 @@ PostgreSQL 16 + pgvector + pg_trgm on port **5435** (all ports +3: Redis 6382, K
 ### New data sources (2026-11)
 
 - `api.eduskunta.fi` (new search API): `ingest speeches` (category puheenvuoro, full text), `ingest questions` (KK via expression `eduskuntatunnus:KK`, XML body via `/valtiopaivaasiat/{tunnus}/xml`). Old `avoindata.eduskunta.fi` table API moves to the new service in 2027 — override with `EDUSKUNTA_API_URL` / `EDUSKUNTA_SEARCH_URL`.
+- Votes: `ingest/votes.py`, category `aanestys` filtered by `istuntovpvuosi` (max 100 per page, unstable order → passes until all ids seen). `votings` table holds title/asia/document + `group_results` computed from per-MP events (group at vote time); `votes.subject` = `votings.voting_id`. SQLite: harvester creates `votings` itself; Postgres: Alembic `b7e1c2d3f4a5`. `representatives.party_id` = group in latest vote. MCP: `search_votes`, `party_votes`.
 - Tilastokeskus PxWeb `StatFin/evaa/13t3.px`: candidate votes 2023 (`ingest connectors/tilastokeskus.py`).
 
 ### Multi-model embeddings

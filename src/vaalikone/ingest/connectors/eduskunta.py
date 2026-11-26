@@ -68,16 +68,6 @@ class EduskuntaClient:
     ) -> list[dict]:
         return await self._fetch_all_pages("MemberOfParliament", max_pages, per_page)
 
-    async def fetch_votes(
-        self, max_pages: int | None = None, per_page: int = 100
-    ) -> list[dict]:
-        return await self._fetch_all_pages("SaliDBAanestysEdustaja", max_pages, per_page)
-
-    async def fetch_vote_summaries(
-        self, max_pages: int | None = None, per_page: int = 100
-    ) -> list[dict]:
-        return await self._fetch_all_pages("SaliDBAanestys", max_pages, per_page)
-
     async def search(
         self,
         query: str | None = None,
@@ -124,6 +114,21 @@ class EduskuntaClient:
         return await self.search(
             category="puheenvuoro",
             expression={"property": "puheenvuorotyyppikoodi", "match": "R"},
+            max_results=max_results, start_from=start_from, combined_search=False,
+        )
+
+    async def search_votings(
+        self, year: int, max_results: int = 100, start_from: int = 0
+    ) -> dict:
+        """Täysistunnon äänestykset valtiopäivävuodelta (kategoria aanestys).
+
+        Jokaisessa tuloksessa on edustajakohtaiset äänet (``aanestystapahtumat``).
+        Palvelu hyväksyy enintään 100 tulosta sivulla (200 -> tyhjä 302-vastaus),
+        ja järjestys ei ole vakaa: kutsujan pitää tarkistaa kattavuus tunnisteilla.
+        """
+        return await self.search(
+            category="aanestys",
+            expression={"property": "istuntovpvuosi", "match": str(year)},
             max_results=max_results, start_from=start_from, combined_search=False,
         )
 

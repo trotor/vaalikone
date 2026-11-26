@@ -269,3 +269,81 @@ def test_parse_finance_listing_picks_rahoitusrivit_only():
     assert set(files) == {"vaalirahoitusilmoitus", "ennakkoilmoitus"}
     assert files["vaalirahoitusilmoitus"].endswith("RAHOITUSRIVIT_E_VI_kuntavaalit2025.csv?dl=2")
     assert files["vaalirahoitusilmoitus"].startswith("https://www.vaalirahoitusvalvonta.fi/")
+
+
+# --- äänestykset (api.eduskunta.fi, aanestys) ---
+
+
+def _voting_fixture() -> dict:
+    return json.loads(_fixture("eduskunta_aanestys.json"))["results"][0]["aanestys"]
+
+
+def test_map_vote_has_no_silent_default():
+    from vaalikone.ingest.votes import map_vote
+    from vaalikone.models.vote import VoteChoice
+
+    assert map_vote("Jaa") == VoteChoice.JAA
+    assert map_vote(" Tyhjää ") == VoteChoice.TYHJA
+    assert map_vote("Poissa") == VoteChoice.POISSA
+    assert map_vote("Ja") is None  # ruotsinkielinen / tuntematon arvo ei ole "poissa"
+    assert map_vote(None) is None
+
+
+def test_parse_voting_groups_and_consistency():
+    from vaalikone.ingest.votes import parse_voting, subject_title
+    from vaalikone.models.vote import VoteChoice
+
+    parsed = parse_voting(_voting_fixture())
+    v = parsed["voting"]
+    assert v["voting_id"] == "2025-130-4"
+    assert v["session"] == "2025-130"
+    assert v["year"] == 2025 and v["number"] == 4
+    assert v["document_ref"] == "HE 156/2025 vp" and v["document_type"] == "HE"
+    assert v["voted_at"].year == 2025
+    assert v["result"] == {"jaa": 3, "ei": 1, "tyhja": 0, "poissa": 0, "yhteensa": 4}
+    groups = v["group_results"]
+    assert groups["kok"]["party"] == "KOK" and groups["kok"]["jaa"] == 1
+    assert groups["sd"]["party"] == "SDP" and groups["sd"]["ei"] == 1
+    assert groups["erk"]["party"] is None  # ryhmään kuulumaton: ei puoluetta
+    assert "Hallitusryhmät" in v["government_opposition"]
+    assert parsed["consistent"] and not parsed["unknown_votes"]
+    assert [m["vote"] for m in parsed["members"]].count(VoteChoice.JAA) == 3
+    assert subject_title(v).startswith("HE 156/2025 vp: Hallituksen esitys")
+
+    broken = _voting_fixture()
+    broken["aanestystapahtumat"][1]["kayttaytyminen"] = {"fi": "Nej"}
+    parsed = parse_voting(broken)
+    assert parsed["unknown_votes"] == ["Nej"]
+    assert not parsed["consistent"]
+
+
+async def test_store_voting_is_idempotent(db_session):
+    from vaalikone.ingest.votes import _store_voting, parse_voting
+    from vaalikone.models.representative import Representative
+    from vaalikone.models.vote import Vote
+    from vaalikone.models.voting import Voting
+
+    parsed = parse_voting(_voting_fixture())
+    reps: dict = {}
+    for _ in range(2):
+        stats = {"votings": 0, "member_votes": 0, "new_representatives": 0,
+                 "unknown_votes": 0, "inconsistent": []}
+        await _store_voting(db_session, parsed, reps, True, stats)
+        await db_session.flush()
+    assert stats["member_votes"] == 4
+    assert await _count(db_session, Voting, Voting.voting_id == "2025-130-4") == 1
+    assert await _count(db_session, Vote, Vote.subject == "2025-130-4") == 4
+    assert await _count(
+        db_session, Representative, Representative.person_id.in_(list(reps))
+    ) == 4
+
+
+def test_parse_voting_group_from_name_when_code_missing():
+    from vaalikone.ingest.votes import parse_voting
+
+    a = _voting_fixture()
+    a["aanestystapahtumat"][3]["edkryhmalyhenne"] = None
+    a["aanestystapahtumat"][3]["eduskuntaryhma"] = {"fi": "Eduskuntaryhmä Valta kuuluu kansalle"}
+    groups = parse_voting(a)["voting"]["group_results"]
+    assert groups["vkk"]["party"] == "VKK"
+    assert "?" not in groups
