@@ -51,6 +51,8 @@ pip install -e .
 # → Web UI: http://localhost:8003
 ```
 
+**Valmis tietokanta riittää sellaisenaan** — mitään lisädataa ei tarvitse syöttää. Alla oleva `vaalikone ingest ...` -osio on vain niille, jotka haluavat hakea itse lisää lähteitä tai rakentaa oman kannan alusta asti.
+
 Ilman LLM API-avainta järjestelmä toimii **read-only -tilassa**: haku, puoluevertailu (`/api/v1/compare`), äänestys- ja ehdokashaku toimivat heti, chat palauttaa lähdeotteet ilman LLM:ää (`__text_only__`).
 
 ```bash
@@ -77,7 +79,7 @@ vibe mcp add vaalikone --transport stdio \
 # {"mcpServers": {"vaalikone": {"command": ".venv/bin/python", "args": ["-m", "vaalikone.mcp.server"]}}}
 ```
 
-**Oma data alusta asti** (tyhjä kanta, hae lähteistä): ks. [Asennus](#asennus) alla — `alembic upgrade head` luo skeeman, `vaalikone ingest ...` täyttää datan.
+**Vain itsepuuhaajille:** oma data alusta asti (tyhjä kanta, hae lähteistä): ks. [Asennus](#asennus) alla — `alembic upgrade head` luo skeeman, `vaalikone ingest ...` täyttää datan. Ei pakollista valmiilla dumpilla.
 
 ## Missä data säilyy?
 
