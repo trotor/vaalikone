@@ -121,7 +121,7 @@ PostgreSQL 16 + pgvector + pg_trgm on port **5435** (all ports +3: Redis 6382, K
 ### New data sources (2026-11)
 
 - `api.eduskunta.fi` (new search API): `ingest speeches` (category puheenvuoro, full text), `ingest questions` (KK via expression `eduskuntatunnus:KK`, XML body via `/valtiopaivaasiat/{tunnus}/xml`). Old `avoindata.eduskunta.fi` table API moves to the new service in 2027 — override with `EDUSKUNTA_API_URL` / `EDUSKUNTA_SEARCH_URL`.
-- Votes: `ingest/votes.py`, category `aanestys` filtered by `istuntovpvuosi` (max 100 per page, unstable order → passes until all ids seen). `votings` table holds title/asia/document + `group_results` computed from per-MP events (group at vote time); `votes.subject` = `votings.voting_id`. SQLite: harvester creates `votings` itself; Postgres: Alembic `b7e1c2d3f4a5`. `representatives.party_id` = group in latest vote. MCP: `search_votes`, `party_votes`.
+- Votes: `ingest/votes.py`, category `aanestys` filtered by `istuntovpvuosi` (max 100 per page, unstable order → passes until all ids seen). `votings` table holds title/asia/document + `group_results` computed from per-MP events (group at vote time); `votes.subject` = `votings.voting_id`. SQLite: harvester creates `votings` itself; Postgres: Alembic `b7e1c2d3f4a5`. `representatives.party_id` = group in the newest voting, sitting MPs only (former MPs and the non-voting Speaker → NULL; needs a run that reaches the current year). MCP: `search_votes`, `party_votes`.
 - Tilastokeskus PxWeb `StatFin/evaa/13t3.px`: candidate votes 2023 (`ingest connectors/tilastokeskus.py`).
 
 ### Multi-model embeddings

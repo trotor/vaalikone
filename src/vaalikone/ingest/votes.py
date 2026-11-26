@@ -258,13 +258,16 @@ async def ingest_votes(
 
             # Vain kun ajo ulottuu kuluvaan vuoteen: muuten "viimeisin" ääni voi olla vanha
             if update_parties and latest_group and until >= datetime.now().year:
-                # Edustajan puolue = ryhmä viimeisimmässä äänestyksessä (tv/erk -> ei puoluetta)
+                # Puolue vain istuville edustajille (mukana ajon uusimmassa äänestyksessä):
+                # ryhmä äänestyshetkellä (tv/erk -> ei puoluetta). Entisille NULL, jotta
+                # puolueiden edustajamäärät eivät paisu.
                 parties = dict((await session.execute(
                     select(Party.abbreviation, Party.id)
                 )).all())
-                for pid, (_, code) in latest_group.items():
+                newest = max(at for at, _ in latest_group.values())
+                for pid, (at, code) in latest_group.items():
                     rep_id = reps.get(pid)
-                    party_id = parties.get(PARTY_MAP.get(code or ""))
+                    party_id = parties.get(PARTY_MAP.get(code or "")) if at == newest else None
                     if rep_id is None:
                         continue
                     rep = await session.get(Representative, rep_id)
