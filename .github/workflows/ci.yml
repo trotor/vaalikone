@@ -44,8 +44,10 @@ jobs:
       - run: uv run alembic upgrade head
         env:
           DATABASE_URL: postgresql+asyncpg://vaalikone:vaalikone@localhost:5435/vaalikone_test
-      # Testit käyttävät SQLiteä (tests/conftest.py); verkkotestit ajetaan vain paikallisesti
+      # API-testit käyttävät migroitua Postgresia; verkkotestit ajetaan vain paikallisesti
       - run: uv run pytest tests/ -q -m "not network"
+        env:
+          DATABASE_URL: postgresql+asyncpg://vaalikone:vaalikone@localhost:5435/vaalikone_test
 
   docker:
     runs-on: ubuntu-latest
