@@ -2,6 +2,9 @@ import pytest
 
 from vaalikone.ingest.connectors.eduskunta import EduskuntaClient
 
+# Live avoindata.eduskunta.fi -kutsuja: ohitetaan CI:ssä (-m "not network").
+pytestmark = pytest.mark.network
+
 
 @pytest.fixture
 def client():

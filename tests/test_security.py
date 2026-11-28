@@ -77,6 +77,9 @@ async def test_chat_rejects_model_not_in_allowlist(monkeypatch):
     from vaalikone.core.config import get_settings
 
     monkeypatch.setenv("CHAT_ALLOWED_MODELS", "gpt-4o,__text_only__")
+    # Ei read-only-tilaa riippumatta .env:stä (CI:ssä ei ole LLM-avainta)
+    monkeypatch.setenv("READ_ONLY_MODE", "false")
+    monkeypatch.setenv("LLM_API_KEY", "test-dummy-key")
     get_settings.cache_clear()
     try:
         from vaalikone.api.app import app

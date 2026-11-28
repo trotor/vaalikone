@@ -14,7 +14,6 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - run: uv sync --frozen --extra dev
       - run: uv run ruff check src/ tests/
-      - run: uv run ruff format --check src/ tests/ || true
 
   test:
     runs-on: ubuntu-latest
@@ -45,9 +44,8 @@ jobs:
       - run: uv run alembic upgrade head
         env:
           DATABASE_URL: postgresql+asyncpg://vaalikone:vaalikone@localhost:5435/vaalikone_test
-      - run: uv run pytest tests/ -q
-        env:
-          DATABASE_URL: postgresql+asyncpg://vaalikone:vaalikone@localhost:5435/vaalikone_test
+      # Testit käyttävät SQLiteä (tests/conftest.py); verkkotestit ajetaan vain paikallisesti
+      - run: uv run pytest tests/ -q -m "not network"
 
   docker:
     runs-on: ubuntu-latest
